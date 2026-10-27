@@ -1,9 +1,9 @@
 """🧊 냉장고 · 🛒 장보기 한 화면
 
-- 맨 위: 유통기한 요약 문장 + [+ 재료 추가] [여러 재료 사용] (높이 고정 머리 영역)
+- 맨 위: 유통기한 요약 문장 + [+ 재료 추가] [사용 (고른 개수)] (높이 고정 머리 영역)
 - 가운데: 냉장고 칸 그림 (fridge_board.py)
   - 재료 카드를 끌어서 칸을 옮기고,
-  - 누르면 상세 팝업에서 사용·소진·폐기, 유통기한별 묶음을 다룬다.
+  - 누르면 고르기/풀기. 다 고른 뒤 [사용]을 누르면 재료마다 사용(양)·소진·폐기를 한 번에 처리한다.
 - 냉장고 그림 위에 장보기 "문"(shopping_panel.py)을 겹쳐 두고, 문을 열고 닫아서 냉장고/장보기를 오간다.
 
 app.py의 사이드바 메뉴에서 "냉장고"를 고르면 이 파일이 실행된다. ("장보기"는 문을 닫은 채로 이 화면)
@@ -72,58 +72,19 @@ state = st.session_state
 # ---------------------------------------------------------------
 # 화면 상태 관리
 # Streamlit은 버튼을 누를 때마다 코드를 다시 실행한다.
-# 그래서 "팝업 안에서 지금 어떤 입력창(사용/수정/삭제)이 열려 있는지"를
-# st.session_state(새로 실행돼도 유지되는 저장 공간)에 기억해 둔다.
-#
-# 열려 있는 팝업도 기억해 두고(dialog_item, add_open), 화면을 그릴 때마다 다시 연다.
-# 팝업의 ✕를 누르거나 작업이 끝나면 지워서 닫는다.
+# 그래서 고른 재료와 열려 있는 팝업을 st.session_state(새로 실행돼도 유지되는 저장 공간)에 기억해 두고,
+# 화면을 그릴 때마다 팝업을 다시 연다. 팝업의 ✕를 누르거나 작업이 끝나면 지워서 닫는다.
 # ---------------------------------------------------------------
-state.setdefault("action", None)       # 예: {"kind": "use", "item_id": "...", "batch_id": None}
-state.setdefault("dialog_item", None)  # 상세 팝업이 열린 재료 id
-state.setdefault("add_open", False)    # 재료 추가 팝업이 열려 있는지
-state.setdefault("rebuy", None)        # 장보기에 추가할지 묻는 중인 재료 정보
-state.setdefault("multi_mode", False)   # 여러 재료 사용: 칸 그림에서 재료를 고르는 중인지
-state.setdefault("multi_selected", [])  # 여러 재료 사용: 고른 재료 id들
-state.setdefault("multi_open", False)   # 여러 재료 사용: 쓰는 양 입력 팝업이 열려 있는지
-state.setdefault("bulk_rebuy", None)    # 여러 재료 사용 후 소진된 재료들 (장보기에 담을지 한 번에 묻기)
-
-
-def open_action(kind, item_id, batch_id=None):
-    """버튼을 눌렀을 때 해당 재료(또는 묶음)의 입력창을 연다."""
-    state.action = {"kind": kind, "item_id": item_id, "batch_id": batch_id}
-
-
-def close_action():
-    """열려 있는 입력창을 닫는다."""
-    state.action = None
-
-
-def is_open(kind, item_id, batch_id=None):
-    """지금 이 입력창이 열려 있어야 하는지 확인한다."""
-    return state.action == {"kind": kind, "item_id": item_id, "batch_id": batch_id}
-
-
-def finish(result):
-    """작업 결과를 처리한다.
-
-    성공하면 메시지를 기억해 두고 페이지를 새로 그린다. (팝업이 닫히고 메시지는 맨 위에 표시)
-    실패하면 팝업을 닫지 않고 그 자리에 이유를 보여 준다.
-    """
-    ok, message = result
-    if not ok:
-        st.warning(message)
-        return
-    state.flash = (ok, message)
-    close_dialogs()
-    st.rerun()
+state.setdefault("add_open", False)     # 재료 추가 팝업이 열려 있는지
+state.setdefault("multi_selected", [])  # 칸 그림에서 고른 재료 id들
+state.setdefault("multi_open", False)   # 고른 재료 사용 팝업이 열려 있는지
+state.setdefault("bulk_rebuy", None)    # 사용·소진·폐기로 없어진 재료들 (장바구니에 담을지 한 번에 묻기)
 
 
 def close_dialogs():
-    """팝업과 그 안의 입력창을 닫는다. (팝업 ✕를 눌렀을 때도 실행)"""
-    state.dialog_item = None
+    """팝업을 닫는다. (팝업 ✕를 눌렀을 때도 실행)"""
     state.add_open = False
     state.multi_open = False
-    close_action()
 
 
 # ---------------------------------------------------------------
@@ -345,151 +306,10 @@ def add_dialog():
 
 
 # ---------------------------------------------------------------
-# 2) 재료 상세 팝업 (칸 그림에서 재료를 누르면 열림)
-#   [사용] 쓴 양 입력 / [소진] 전부 씀 / [폐기] 버림 (기한 지남·3일 이내일 때만)
-#   재료가 없어지거나 폐기하면 "장보기 리스트에 추가할까요?" 팝업을 띄운다.
-# ---------------------------------------------------------------
-def ask_rebuy(item, result, source):
-    """소진·폐기 결과를 처리한다. 성공하면 "장보기 리스트에 추가할까요?" 팝업을 띄운다.
-
-    source: 장보기에 담을 때 출처 (소진 = SOURCE_USED, 폐기 = SOURCE_DISCARDED)
-    """
-    ok, message = result
-    if not ok:
-        st.warning(message)
-        return
-    state.rebuy = {
-        "item_id": item["id"], "name": item["name"], "unit": item["unit"],
-        "source": source, "message": message,
-        "gone": item["status"] == store.STATUS_USED,  # 재료가 냉장고에서 없어졌는지
-    }
-    # 이전 팝업에서 고른 수량이 남지 않게 지운다. (새 팝업은 1부터 시작)
-    state.pop("rebuy_qty", None)
-    close_dialogs()
-    st.rerun()
-
-
-def after_use(item, result):
-    """'사용' 결과: 남은 양이 0이 되어 소진됐으면 장보기에 추가할지 묻고, 아니면 메시지만 보여 준다."""
-    if result[0] and item["status"] == store.STATUS_USED:
-        ask_rebuy(item, result, shop.SOURCE_USED)
-    else:
-        finish(result)
-
-
-def render_use_panel(item):
-    """'사용' 버튼을 누르면 나오는 창: 쓴 양을 입력한다."""
-    total = store.total_quantity(item)
-    with st.form(f"use_form_{item['id']}"):
-        amount = st.number_input(
-            f"사용한 양 ({item['unit']}, 남은 양 {store.format_quantity(total, item['unit'])})",
-            min_value=0.1,
-            max_value=float(total),
-            value=float(min(1.0, total)),
-            step=1.0,
-            format="%g",
-        )
-        col_ok, col_cancel = st.columns(2)
-        ok = col_ok.form_submit_button("확인")
-        col_cancel.form_submit_button("취소", on_click=close_action)
-    if ok:
-        after_use(item, store.use_quantity(items, item["id"], amount))
-
-
-def render_batches(item):
-    """유통기한별 묶음 목록. 기한이 지났거나 3일 이내인 묶음에만 [폐기] 버튼이 있다."""
-    st.markdown(f"**유통기한별 ({len(item['batches'])}묶음)**")
-    for batch in store.sorted_batches(item):
-        col_date, col_qty, col_btn = st.columns([2.2, 1.3, 1], vertical_alignment="center")
-        col_date.markdown(f"{store.format_expiry(batch['expiry'])} {expiry_badge(batch['expiry'])}")
-        col_qty.write(store.format_quantity(batch["quantity"], item["unit"]))
-        if store.can_discard(batch["expiry"]) and col_btn.button("폐기", key=f"discard_batch_{batch['id']}"):
-            ask_rebuy(item, store.discard_batches(items, item["id"], [batch["id"]]), shop.SOURCE_DISCARDED)
-
-
-@st.dialog("재료 정보", on_dismiss=close_dialogs)
-def item_dialog(item_id):
-    """재료 상세 팝업: 요약, [사용] [소진] [폐기], 유통기한별 묶음"""
-    item = next((i for i in items if i["id"] == item_id and i["status"] == store.STATUS_IN_FRIDGE), None)
-    if item is None:
-        st.info("이미 소진했거나 폐기한 재료예요.")
-        return
-    first = store.earliest_batch(item)
-    unit = item["unit"]
-    zone = store.ZONES.get(item.get("zone"), "칸 미정")
-
-    st.markdown(f"### {item['name']} {expiry_badge(first['expiry'])}")
-    st.caption(
-        f"총 {store.format_quantity(store.total_quantity(item), unit)} · "
-        f"{item['category']} · {item['storage']} · {zone}"
-    )
-    if item.get("tip"):
-        st.caption(f"💡 {item['tip']}")
-
-    # 폐기 버튼은 기한이 지났거나 3일 이내인 묶음이 있을 때만 보여 준다.
-    discardable = store.can_discard(first["expiry"])
-    columns = st.columns(3)
-    columns[0].button(
-        "사용", key=f"use_{item['id']}", on_click=open_action, args=("use", item["id"]), width="stretch"
-    )
-    if columns[1].button("소진", key=f"used_{item['id']}", width="stretch"):
-        ask_rebuy(item, store.mark_used(items, item["id"]), shop.SOURCE_USED)
-    if discardable and columns[2].button("폐기", key=f"discard_{item['id']}", width="stretch"):
-        ask_rebuy(item, store.discard_item(items, item["id"]), shop.SOURCE_DISCARDED)
-
-    if is_open("use", item["id"]):
-        render_use_panel(item)
-
-    st.divider()
-    render_batches(item)
-
-
-# ---------------------------------------------------------------
-# 3) "장보기 리스트에 추가할까요?" 팝업 (소진·폐기 뒤)
-# ---------------------------------------------------------------
-def close_rebuy():
-    """✕로 닫으면 묻지 않은 것으로 둔다. (장보기의 '다시 사기'에 그대로 남는다)"""
-    state.rebuy = None
-
-
-def answer_rebuy(buy, quantity=1.0):
-    """[추가]면 고른 수량으로 장보기 리스트에 담는다. (단위는 냉장고에 있던 단위)
-    어느 쪽이든 장보기의 '다시 사기'에는 다시 나오지 않게 한다."""
-    info = state.rebuy
-    data = shop.load()
-    result = (True, f"{info['message']} 장바구니에는 담지 않았어요.")
-    if buy:
-        ok, message = shop.add_item(data, info["name"], quantity, info["unit"], info["source"])
-        result = (ok, f"{info['message']} {message}")
-    if info["gone"]:
-        shop.mark_handled(data, [f"used:{info['item_id']}"])
-    state.rebuy = None
-    state.flash = result
-
-
-@st.dialog("🛒 장보기", on_dismiss=close_rebuy)
-def rebuy_dialog():
-    info = state.rebuy
-    st.write(info["message"])
-    st.markdown(f"**'{info['name']}'을(를) 장바구니에 담을까요?**")
-    # 담을 수량 (단위는 냉장고에 있던 단위 그대로)
-    quantity = st.number_input(
-        f"수량 ({info['unit']})", min_value=0.1, value=1.0, step=1.0, format="%g", key="rebuy_qty"
-    )
-    col_yes, col_no = st.columns(2)
-    if col_yes.button("추가", type="primary", width="stretch"):
-        answer_rebuy(True, quantity)
-        st.rerun()
-    if col_no.button("추가 안 함", width="stretch"):
-        answer_rebuy(False)
-        st.rerun()
-
-
-# ---------------------------------------------------------------
-# 4) 여러 재료 사용
-#   [여러 재료 사용] → 칸 그림에서 재료를 눌러 고르기 → [완료]
-#   → 재료마다 쓰는 양 입력 팝업 → [사용하기]
-#   → 남은 양이 0이 된 재료가 있으면 장보기에 담을지 한 번에 묻는 팝업
+# 4) 고른 재료 사용 (칸 그림에서 재료를 눌러 고르고 [사용])
+#   칸 그림에서 재료를 눌러 고르기(다시 누르면 풀림) → 위쪽 [사용 (고른 개수)]
+#   → 재료마다 [사용(양 입력) / 소진 / 폐기(기한 지난 재료만)]를 고르는 팝업 → [적용하기]
+#   → 다 쓰거나 버려서 없어진 재료가 있으면 장바구니에 담을지 한 번에 묻는 팝업
 # ---------------------------------------------------------------
 def clear_keys(prefix):
     """이전 팝업에서 입력한 값이 남지 않게, 이름이 prefix로 시작하는 입력칸 값을 지운다."""
@@ -497,25 +317,21 @@ def clear_keys(prefix):
         del state[key]
 
 
-def start_multi():
+def clear_selection():
+    """고른 재료를 모두 풀어 준다."""
+    state.multi_selected = []
+
+
+def open_use_dialog():
+    """[사용]: 고른 재료들을 한 번에 다루는 팝업을 연다."""
     close_dialogs()
-    state.multi_mode = True
-    state.multi_selected = []
-
-
-def cancel_multi():
-    state.multi_mode = False
-    state.multi_selected = []
-
-
-def finish_select():
-    """[완료]: 쓰는 양 입력 팝업을 연다."""
+    clear_keys("multi_act_")  # 이전 팝업에서 고른 처리 방법·양은 지운다. (고른 재료 목록은 그대로)
     clear_keys("multi_amt_")
     state.multi_open = True
 
 
 def on_toggle():
-    """선택 모드에서 재료를 누르면 고른 목록에 넣거나 뺀다."""
+    """칸 그림에서 재료를 누르면 고른 목록에 넣거나 뺀다."""
     item_id = (state.get(BOARD_KEY) or {}).get("toggle")
     if not item_id:
         return
@@ -525,48 +341,84 @@ def on_toggle():
         state.multi_selected = state.multi_selected + [item_id]
 
 
-@st.dialog("여러 재료 사용", on_dismiss=close_dialogs)
+ACT_USE, ACT_EMPTY, ACT_DISCARD = "사용", "소진", "폐기"
+
+
+@st.dialog("고른 재료 사용", on_dismiss=close_dialogs)
 def multi_dialog():
-    """고른 재료마다 쓰는 양을 입력하고 한 번에 사용한다. (0이면 그 재료는 쓰지 않음)"""
+    """고른 재료마다 쓰는 양을 입력하거나 [소진]/[폐기]를 골라 한 번에 적용한다.
+
+    - 사용: 쓰는 양만큼 줄인다. (0이면 그대로)
+    - 소진: 남은 양을 모두 다 쓴 것으로
+    - 폐기: 유통기한이 지난 묶음만 버린다. (기한 지난 묶음이 있는 재료에만 보인다)
+    다 쓰거나 버려서 없어진 재료는 마지막에 장바구니에 담을지 한 번에 묻는다.
+    """
     chosen = [i for i in store.fridge_items_sorted(items) if i["id"] in state.multi_selected]
     if not chosen:
         st.info("고른 재료가 없어요.")
         return
-    amounts = {}
+    plans = {}
     for item in chosen:
         total = store.total_quantity(item)
         first = store.earliest_batch(item)
-        col_name, col_amount = st.columns([1.4, 1], vertical_alignment="center")
-        col_name.markdown(
-            f"**{item['name']}** {expiry_badge(first['expiry'])}  \n"
-            f"남은 양 {store.format_quantity(total, item['unit'])}"
-        )
-        amounts[item["id"]] = col_amount.number_input(
-            f"쓰는 양 ({item['unit']})", min_value=0.0, max_value=float(total),
-            value=float(min(1.0, total)), step=1.0, format="%g", key=f"multi_amt_{item['id']}",
-        )
+        expired = store.expired_batches(item)
+        with st.container(border=True):
+            st.markdown(
+                f"**{item['name']}** {expiry_badge(first['expiry'])} "
+                f":gray[남은 양 {store.format_quantity(total, item['unit'])}]"
+            )
+            # 한 줄: [쓰는 양(짧은 칸)] 단위 [소진] [폐기]
+            # 소진·폐기를 고르면 쓰는 양 칸은 잠긴다. 다시 누르면 풀려서 '사용'으로 돌아간다.
+            with st.container(horizontal=True, vertical_alignment="center", gap="small", wrap=False):
+                act_key = f"multi_act_{item['id']}"
+                picked_act = state.get(act_key)
+                amount = st.number_input(
+                    f"{item['name']} 쓰는 양", min_value=0.0, max_value=float(total),
+                    value=float(min(1.0, total)), step=1.0, format="%g", key=f"multi_amt_{item['id']}",
+                    label_visibility="collapsed", width=80 if MOBILE else 120, disabled=bool(picked_act),
+                )
+                st.markdown(item["unit"], width="content")
+                options = [ACT_EMPTY] + ([ACT_DISCARD] if expired else [])  # 폐기는 기한 지난 재료만
+                act = st.segmented_control(
+                    f"{item['name']} 처리", options, key=act_key, label_visibility="collapsed",
+                ) or ACT_USE
+            if act == ACT_DISCARD:
+                gone_qty = sum(b["quantity"] for b in expired)
+                st.caption(f"기한 지난 {store.format_quantity(gone_qty, item['unit'])}을(를) 버려요.")
+            elif act == ACT_EMPTY:
+                st.caption("남은 양을 모두 다 쓴 것으로 처리해요.")
+            if act != ACT_USE:
+                amount = 0.0
+            plans[item["id"]] = (item, act, amount, expired)
 
-    if st.button("사용하기", type="primary", width="stretch"):
-        used, gone = [], []
-        for item in chosen:
-            amount = amounts[item["id"]]
-            if amount <= 0:
-                continue
-            ok, _ = store.use_quantity(items, item["id"], amount)
-            if ok:
-                used.append(f"{item['name']} {store.format_quantity(amount, item['unit'])}")
-                if item["status"] == store.STATUS_USED:
-                    gone.append({"item_id": item["id"], "name": item["name"], "unit": item["unit"]})
-        state.multi_mode = False
-        state.multi_selected = []
+    if st.button("적용하기", type="primary", width="stretch"):
+        done, gone = [], []
+        for item, act, amount, expired in plans.values():
+            if act == ACT_USE:
+                if amount <= 0:
+                    continue
+                store.use_quantity(items, item["id"], amount)
+                done.append(f"{item['name']} {store.format_quantity(amount, item['unit'])} 사용")
+                source = shop.SOURCE_USED
+            elif act == ACT_EMPTY:
+                store.mark_used(items, item["id"])
+                done.append(f"{item['name']} 소진")
+                source = shop.SOURCE_USED
+            else:
+                store.discard_batches(items, item["id"], [b["id"] for b in expired])
+                done.append(f"{item['name']} 폐기")
+                source = shop.SOURCE_DISCARDED
+            if item["status"] == store.STATUS_USED:
+                gone.append({"item_id": item["id"], "name": item["name"], "unit": item["unit"], "source": source})
+        clear_selection()
         close_dialogs()
-        message = f"사용했어요: {', '.join(used)}." if used else "사용한 재료가 없어요."
+        message = f"처리했어요: {', '.join(done)}." if done else "바뀐 재료가 없어요."
         if gone:
-            # 다 쓴 재료가 있으면 장보기에 담을지 한 번에 묻는다.
+            # 없어진 재료가 있으면 장바구니에 담을지 한 번에 묻는다.
             clear_keys("bulk_")
             state.bulk_rebuy = {"items": gone, "message": message}
         else:
-            state.flash = (bool(used), message)
+            state.flash = (bool(done), message)
         st.rerun()
 
 
@@ -577,10 +429,10 @@ def close_bulk_rebuy():
 
 @st.dialog("🛒 장보기", on_dismiss=close_bulk_rebuy)
 def bulk_rebuy_dialog():
-    """여러 재료 사용으로 다 쓴 재료들을 장보기에 담을지 한 번에 묻는다."""
+    """사용·소진·폐기로 없어진 재료들을 장바구니에 담을지 한 번에 묻는다."""
     info = state.bulk_rebuy
     st.write(info["message"])
-    st.markdown("**다 쓴 재료를 장바구니에 담을까요?**")
+    st.markdown("**다 쓰거나 버린 재료를 장바구니에 담을까요?**")
     picks = []
     for gone in info["items"]:
         col_check, col_qty = st.columns([1.4, 1], vertical_alignment="center")
@@ -599,7 +451,7 @@ def bulk_rebuy_dialog():
         added, already = [], []
         if add:
             for gone, quantity in picks:
-                ok, _ = shop.add_item(data, gone["name"], quantity, gone["unit"], shop.SOURCE_USED)
+                ok, _ = shop.add_item(data, gone["name"], quantity, gone["unit"], gone.get("source", shop.SOURCE_USED))
                 (added if ok else already).append(gone["name"])
         # 물어본 재료는 장보기의 '다시 사기'에 다시 나오지 않게 한다.
         shop.mark_handled(data, [f"used:{gone['item_id']}" for gone in info["items"]])
@@ -614,44 +466,42 @@ def bulk_rebuy_dialog():
 
 
 # ---------------------------------------------------------------
-# 5) 맨 위: 상태별 개수 + [+ 재료 추가] [여러 재료 사용]
+# 5) 맨 위: 상태별 개수 + [+ 재료 추가] [사용 (고른 개수)]
 # ---------------------------------------------------------------
 def open_add_dialog():
     close_dialogs()
-    cancel_multi()
     state.pop("add_msg", None)
     state.add_open = True
 
 
-# 머리 영역(높이 고정): 평소에는 요약 + 버튼, 여러 재료 사용 중에는 안내 + [완료] [취소]
-# 높이가 늘 같아서 아래 냉장고 그림이 장보기 페이지의 닫힌 문과 같은 자리에 온다.
+# 머리 영역(높이 고정): 요약 + [＋ 재료 추가] + [사용 (고른 개수)]
+# 높이가 늘 같아서 아래 냉장고 그림이 장보기의 닫힌 문과 같은 자리에 온다.
+alive = {i["id"] for i in store.fridge_items_sorted(items)}
+state.multi_selected = [i for i in state.multi_selected if i in alive]  # 없어진 재료는 선택에서 뺀다.
+picked = len(state.multi_selected)
+use_label = f"사용 ({picked})" if picked else "사용"
 head = ui.page_head(MOBILE)
 if not DOOR_CLOSED:
     with head:
-        if state.multi_mode:
-            alive = {i["id"] for i in store.fridge_items_sorted(items)}
-            state.multi_selected = [i for i in state.multi_selected if i in alive]
-            st.markdown(f"**사용할 재료를 눌러 고르세요.** ({len(state.multi_selected)}개 선택)")
-            with st.container(key="row_buttons_multi"):
-                col_done, col_cancel, _ = st.columns([1, 1, 0.01 if MOBILE else 2])
-            col_done.button(
-                "완료", type="primary", width="stretch", on_click=finish_select, disabled=not state.multi_selected
-            )
-            col_cancel.button("취소", width="stretch", on_click=cancel_multi)
-        elif MOBILE:
+        if MOBILE:
             # 휴대폰: 요약 한 줄 아래에 버튼 2개를 가로로 (장보기 쪽 머리 영역과 같은 자리)
             st.markdown(summary_badges(), unsafe_allow_html=True)
             with st.container(key="row_buttons"):
-                col_add, col_multi = st.columns(2)
-                col_add.button("＋ 추가", type="primary", width="stretch", on_click=open_add_dialog)
-                col_multi.button("여러 개 사용", width="stretch", on_click=start_multi)
+                col_add, col_use = st.columns(2)
+                col_add.button("＋ 추가", width="stretch", on_click=open_add_dialog)
+                col_use.button(use_label, type="primary", width="stretch", on_click=open_use_dialog,
+                               disabled=not picked)
         else:
-            # PC: 왼쪽 요약·도움말, 오른쪽 [＋ 재료 추가]와 그 아래 [여러 재료 사용]
+            # PC: 왼쪽 요약·도움말(고른 게 있으면 [선택 해제]), 오른쪽 [＋ 재료 추가]와 그 아래 [사용]
             col_summary, col_buttons = st.columns([4, 1.5], vertical_alignment="center")
             col_summary.markdown(summary_badges(), unsafe_allow_html=True)
-            col_summary.caption("재료를 누르면 사용·소진·폐기, 끌면 칸을 옮길 수 있어요.")
-            col_buttons.button("＋ 재료 추가", type="primary", width="stretch", on_click=open_add_dialog)
-            col_buttons.button("여러 재료 사용", width="stretch", on_click=start_multi)
+            if picked:
+                col_summary.button(f"✕ 선택 해제 ({picked})", type="tertiary", on_click=clear_selection)
+            else:
+                col_summary.caption("재료를 눌러 고르고 [사용]을 누르세요. 끌면 칸을 옮길 수 있어요.")
+            col_buttons.button("＋ 재료 추가", width="stretch", on_click=open_add_dialog)
+            col_buttons.button(use_label, type="primary", width="stretch", on_click=open_use_dialog,
+                               disabled=not picked)
 
 # 직전 작업의 결과 메시지 (자리를 차지하지 않는 알림)
 ui.show_flash()
@@ -659,7 +509,7 @@ ui.show_flash()
 
 # ---------------------------------------------------------------
 # 6) 냉장고 칸 그림
-# 재료를 끌어서 놓으면 on_move, 누르면 on_select가 페이지를 다시 그리기 전에 실행된다.
+# 재료를 끌어서 놓으면 on_move, 누르면 on_toggle(고르기/풀기)이 페이지를 다시 그리기 전에 실행된다.
 # ---------------------------------------------------------------
 BOARD_KEY = "fridge_board"
 
@@ -671,18 +521,9 @@ def on_move():
         store.set_zone(store.load_items(), move.get("item_id"), move.get("zone"))
 
 
-def on_select():
-    """재료를 누르면 그 재료의 상세 팝업을 열도록 기억해 둔다."""
-    selected = (state.get(BOARD_KEY) or {}).get("select")
-    if selected:
-        close_dialogs()  # 다른 재료에서 열어 둔 입력창은 닫는다.
-        state.dialog_item = selected
-
-
 def on_close_door():
     """냉장고 그림의 손잡이를 누르면 문을 닫는다. → 장보기"""
-    if not state.multi_mode:
-        state.home_view = VIEW_DOOR
+    state.home_view = VIEW_DOOR
 
 
 # 문 모양(열림/닫힘). 바뀔 때마다 CSS transition으로 부드럽게 돈다.
@@ -692,8 +533,7 @@ st.html(shopping_panel.door_css(
 ))
 with st.container(key="fridge_stage"):
     fridge_board(
-        items, key=BOARD_KEY, on_move=on_move, on_select=on_select,
-        on_toggle=on_toggle, select_mode=state.multi_mode, selected=state.multi_selected,
+        items, key=BOARD_KEY, on_move=on_move, on_toggle=on_toggle, selected=state.multi_selected,
         on_close=on_close_door,
         # 다른 페이지에서 냉장고(문 열린 상태)로 들어왔을 때만 문 열림 효과
         animate=state.get("page_changed", False) and not DOOR_CLOSED, mobile=MOBILE,
@@ -703,13 +543,9 @@ with st.container(key="fridge_stage"):
 shopping_panel.render(head, door, MOBILE, show_head=DOOR_CLOSED)
 
 # 열려 있어야 하는 팝업을 연다. (한 번에 하나만)
-if state.rebuy:
-    rebuy_dialog()
-elif state.bulk_rebuy:
+if state.bulk_rebuy:
     bulk_rebuy_dialog()
 elif state.multi_open:
     multi_dialog()
 elif state.add_open:
     add_dialog()
-elif state.dialog_item:
-    item_dialog(state.dialog_item)

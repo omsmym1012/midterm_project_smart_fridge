@@ -10,8 +10,7 @@ HTML·CSS·JavaScript를 직접 넣은 작은 컴포넌트를 만든다.
 - 다른 페이지에서 넘어오면 문이 열리는 효과, 다크 모드면 어두운 색 (ui.py가 붙인 html[data-ft])
 - 재료를 마우스(또는 손가락)로 잡으면 추천 칸 색이 연하게 바뀌고,
   다른 칸에 놓으면 Python으로 {"item_id", "zone"}을 보낸다. ("move" 이벤트)
-- 끌지 않고 누르기만 하면 재료 id를 보낸다. ("select" 이벤트 → 상세 팝업)
-- 선택 모드(여러 재료 사용)에서는 끌기를 끄고, 누를 때마다 재료 id를 보낸다. ("toggle" 이벤트)
+- 끌지 않고 누르기만 하면 그 재료를 고르거나 푼다. ("toggle" 이벤트, 고른 재료는 파란 테두리)
 """
 
 import streamlit as st
@@ -164,7 +163,6 @@ CSS = """
     cursor: pointer;
 }
 .fb-grip:hover { filter: brightness(1.1); }
-.fb-select .fb-grip { cursor: default; opacity: 0.6; }   /* 여러 재료 사용 중에는 문을 닫지 않는다 */
 
 /* 다리 */
 .fb-feet { display: flex; justify-content: space-between; padding: 0 26px; height: 6px; }
@@ -222,7 +220,7 @@ CSS = """
 }
 .fb-placeholder { opacity: 0.35; }
 
-/* 선택 모드: 고른 재료는 파란 테두리와 ✓ 표시 */
+/* 고른 재료는 파란 테두리와 ✓ 표시 */
 .fb-chip.fb-selected { outline: 2px solid var(--fb-primary); outline-offset: 0; }
 .fb-chip.fb-selected .fb-name::before { content: "✓ "; color: var(--fb-primary); font-weight: 700; }
 
@@ -280,8 +278,7 @@ export default function (component) {
     parentElement.appendChild(root);
 
     const titles = data.zones;      // 칸 id → 칸 이름
-    const selectMode = !!data.selectMode;           // 선택 모드(여러 재료 사용)인지
-    const selected = new Set(data.selected || []);  // 선택 모드에서 고른 재료 id들
+    const selected = new Set(data.selected || []);  // 골라 둔 재료 id들
     const lists = {};               // 칸 id → 재료 카드가 들어가는 영역
     const zoneBoxes = [];           // 재료를 놓을 수 있는 칸들 ("새 재료" 포함)
     let dragging = null;            // 지금 끌고 있는 재료 정보
@@ -315,7 +312,7 @@ export default function (component) {
             // 손잡이를 누르면 Python에 알려서 문을 닫는다. (장보기 화면)
             const grip = el("div", "fb-grip");
             grip.title = "문 닫기 (장보기)";
-            grip.addEventListener("click", () => { if (!selectMode) setTriggerValue("close", Date.now()); });
+            grip.addEventListener("click", () => setTriggerValue("close", Date.now()));
             door.appendChild(grip);
         }
         cavity.append(shelves, door);
@@ -335,7 +332,6 @@ export default function (component) {
     window.__fbThemeWatch = new MutationObserver(applyTheme);
     window.__fbThemeWatch.observe(document.documentElement, { attributes: true, attributeFilter: ["data-ft"] });
     if (data.mobile) root.classList.add("fb-mobile");
-    if (selectMode) root.classList.add("fb-select");
 
     const fridge = el("div", "fb-fridge");
     // 위에서부터 냉동실 → 냉장실 (일반 가정용 냉장고처럼 냉동실이 위) + 다리
@@ -377,14 +373,6 @@ export default function (component) {
         chip.append(el("span", "fb-name", item.name), el("span", "fb-meta", item.meta));
         chip.title = "추천 칸: " + titles[item.recommend];
 
-        if (selectMode) {
-            // 선택 모드(여러 재료 사용): 끌기 없이 누를 때마다 고르기/풀기. 화면에서 먼저 바꿔 두고 Python에 알린다.
-            chip.addEventListener("click", () => {
-                chip.classList.toggle("fb-selected");
-                setTriggerValue("toggle", item.id);
-            });
-            return chip;
-        }
         chip.addEventListener("pointerenter", () => { if (!dragging) setRecommend(item.recommend, true); });
         chip.addEventListener("pointerleave", () => { if (!dragging) setRecommend(item.recommend, false); });
         chip.addEventListener("pointerdown", (event) => startDrag(event, chip, item));
@@ -437,8 +425,11 @@ export default function (component) {
             setRecommend(item.recommend, false);
             dragging = null;
             if (!ghost) {
-                // 움직이지 않고 손을 뗐으면 "누르기"로 본다.
-                if (e.type === "pointerup") setTriggerValue("select", item.id);  // → 재료 팝업
+                // 움직이지 않고 손을 뗐으면 "누르기": 고르기/풀기. 화면에서 먼저 바꿔 두고 Python에 알린다.
+                if (e.type === "pointerup") {
+                    chip.classList.toggle("fb-selected");
+                    setTriggerValue("toggle", item.id);
+                }
                 return;
             }
             ghost.remove();
@@ -494,23 +485,20 @@ def _board_data(items):
     return {"zones": store.ZONES, "items": data_items}
 
 
-def fridge_board(items, key, on_move, on_select, on_toggle=None, select_mode=False, selected=(),
-                 animate=False, mobile=False, on_close=None, hide_outside=False):
+def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mobile=False, on_close=None,
+                 hide_outside=False):
     """냉장고 칸 화면을 그린다.
 
-    재료를 다른 칸에 놓으면 on_move, 누르면 on_select가 화면을 다시 그리기 전에 먼저 실행된다.
+    재료를 다른 칸에 놓으면 on_move, 누르면 on_toggle이 화면을 다시 그리기 전에 먼저 실행된다.
     그 안에서 st.session_state[key]["move"]로 {"item_id", "zone"}을,
-    st.session_state[key]["select"]로 누른 재료 id를 읽을 수 있다.
-
-    select_mode=True(여러 재료 사용)이면 끌기를 끄고, 누를 때마다 on_toggle이 실행된다.
-    (st.session_state[key]["toggle"]에 누른 재료 id) selected: 지금 골라 둔 재료 id들
+    st.session_state[key]["toggle"]로 누른(고르거나 푼) 재료 id를 읽을 수 있다.
+    selected: 지금 골라 둔 재료 id들 (파란 테두리로 표시)
     animate=True: 문이 열리는 효과 (다른 페이지에서 넘어왔을 때)
-    mobile=True: 휴대폰 화면 배치 (글씨 작게, 새 재료 봉투는 아래)
+    mobile=True: 휴대폰 화면 배치 (글씨 작게)
     on_close: 냉장실 문 손잡이를 눌렀을 때 실행 (문 닫기 → 장보기)
     hide_outside=True: 냉장고 밖(조리대)을 감춘다 (문이 닫힌 장보기 화면)
     """
     data = _board_data(items)
-    data["selectMode"] = select_mode
     data["selected"] = list(selected)
     data["animate"] = animate
     data["mobile"] = mobile
@@ -520,6 +508,6 @@ def fridge_board(items, key, on_move, on_select, on_toggle=None, select_mode=Fal
     data["hideOutside"] = hide_outside
     _board(
         data=data, key=key,
-        on_move_change=on_move, on_select_change=on_select, on_toggle_change=on_toggle or (lambda: None),
+        on_move_change=on_move, on_toggle_change=on_toggle,
         on_close_change=on_close or (lambda: None),
     )

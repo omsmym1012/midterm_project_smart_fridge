@@ -131,6 +131,9 @@ h1 { font-size: 1.5rem !important; }
 [data-testid="stHorizontalBlock"]:has([class*="_chk_"]) [data-testid="stNumberInputContainer"] button { display: none; }
 [data-testid="stHorizontalBlock"]:has([class*="_chk_"]) p { font-size: 0.88rem; }
 
+/* 머리 영역의 버튼 줄은 맨 아래에 붙인다. (요약 문장이 1줄이든 2줄이든 냉장고·장보기 버튼이 같은 자리) */
+.st-key-page_head > div:last-child { margin-top: auto; }
+
 /* 아래쪽 메뉴 막대 (휴대폰 앱처럼 화면 맨 아래에 고정) */
 .st-key-bottom_nav {
     position: fixed; left: 0; right: 0; bottom: 0; z-index: 999990;
