@@ -5,10 +5,14 @@
 - 기술: Python + Streamlit, AI는 OpenRouter (키는 `.env`의 `OPENROUTER_API_KEY`), 레시피는 식품안전나라 API (`FOODSAFETY_API_KEY`)
 - 실행: `streamlit run app.py` (가상환경 `.venv` 활성화 후)
 - 구조
-  - `app.py`: 진입 파일, 사이드바 메뉴(`st.navigation`)만 담당
-  - `views/fridge.py`(냉장고: 칸 그림 + 재료 팝업), `views/shopping.py`(장보기), `views/recipe.py`(요리 추천): 페이지 화면
+  - `app.py`: 진입 파일, 사이드바 메뉴(`st.navigation`, 휴대폰은 아래쪽 메뉴 막대)와 앱 전체 스타일 담당
+  - `views/fridge.py`(냉장고 · 장보기 한 화면: 냉장고 그림 위에 장보기 '문'을 겹쳐 열고 닫음), `views/recipe.py`(요리 추천): 페이지 화면
+  - `views/shopping.py`: 사이드바 '장보기' 메뉴 (문을 닫은 상태로 냉장고 화면에 보냄)
+  - `shopping_panel.py`: 장보기 문 안의 내용(다시 사기/장바구니/냉장고 넣기)과 문 CSS
+  - `ui.py`: 화면 공통 (다크 모드·휴대폰 화면 감지, 머리 영역, 알림, 아래쪽 메뉴, 앱 전체 CSS)
+  - `.streamlit/config.toml`: 앱 색·글꼴 테마 (밝게/어둡게)
   - `fridge_store.py`: 냉장고 데이터 저장/불러오기 (`data/fridge.json`)
-  - `fridge_board.py`: 냉장고 칸 드래그 앤 드롭 화면 (`st.components.v2`)
+  - `fridge_board.py`: 냉장고 칸 드래그 앤 드롭 화면 (`st.components.v2`, 실제 냉장고 모양)
   - `shopping_store.py`: 장보기 데이터 저장/불러오기, 추천 후보 (`data/shopping.json`)
   - `classifier.py`: 재료 분류·추천 단위 (목록 → AI, 결과는 `data/classify_cache.json`)
   - `recipe_store.py`: 요리 추천 (식품안전나라 레시피 → 부족하면 AI, 레시피는 `data/recipes.json`)
@@ -23,9 +27,12 @@
   3. 유통기한 알림: 기한 지남/3일 이내/여유를 색으로 표시, 상단 요약 (푸시 알림 없음)
   4. 장보기 리스트: "다 씀"·기한 지난 재료 추가, 직접 추가, 구매 체크 시 냉장고로 다시 넣기 선택
   5. AI 요리 추천: 임박 재료 우선 요리 2~3개, 부족 재료를 장보기에 추가, 빈 냉장고·AI 실패 시 안내 메시지
+     - 원하는 요리를 골라(레시피 목록에서 검색) 부족한 재료 보기 → 장바구니에 담기
 - **2단계:** 영수증 사진 인식 → 사용자가 확인·수정 후 냉장고에 추가
 - **3단계:** 구매 주기 추천, 최저가 비교
 - 4단계: UI,UX 디자인하기
+  - 다크 모드 만들기
+  - 모바일 전용 화면 만들기
 
 ## 과제 규칙
 - 공개 저장소다. API 키, `.env`, 개인정보, 의존성, 빌드 결과물, 큰 데이터, 영상, 영수증 사진을 커밋하지 않는다.

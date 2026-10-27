@@ -1,11 +1,12 @@
-"""🧊 냉장고 페이지: 냉장고 칸 그림 하나로 재료를 보고 관리한다.
+"""🧊 냉장고 · 🛒 장보기 한 화면
 
-- 맨 위: 유통기한 상태별 개수 + [+ 재료 추가] (팝업)
+- 맨 위: 유통기한 요약 문장 + [+ 재료 추가] [여러 재료 사용] (높이 고정 머리 영역)
 - 가운데: 냉장고 칸 그림 (fridge_board.py)
   - 재료 카드를 끌어서 칸을 옮기고,
   - 누르면 상세 팝업에서 사용·소진·폐기, 유통기한별 묶음을 다룬다.
+- 냉장고 그림 위에 장보기 "문"(shopping_panel.py)을 겹쳐 두고, 문을 열고 닫아서 냉장고/장보기를 오간다.
 
-app.py의 사이드바 메뉴에서 "냉장고"를 고르면 이 파일이 실행된다.
+app.py의 사이드바 메뉴에서 "냉장고"를 고르면 이 파일이 실행된다. ("장보기"는 문을 닫은 채로 이 화면)
 """
 
 from datetime import date
@@ -15,9 +16,48 @@ import streamlit as st
 import classifier
 import fridge_store as store
 import shopping_store as shop
-from fridge_board import fridge_board
+import shopping_panel
+import ui
+from fridge_board import FRIDGE_HEIGHT, FRIDGE_HEIGHT_MOBILE, TRAY_GAP, TRAY_WIDTH, fridge_board
 
-st.title("🧊 냉장고")
+MOBILE = ui.is_mobile()  # 휴대폰 화면이면 버튼·냉장고 그림 배치를 바꾼다.
+
+# ---------------------------------------------------------------
+# 냉장고 · 장보기 한 화면
+# 냉장고 그림 위에 같은 크기의 "문"(장보기)을 겹쳐 두고, 문을 열고 닫아서 두 화면을 오간다.
+# 페이지를 바꾸지 않고 문 모양(CSS)만 바꾸므로 열리고 닫히는 움직임이 부드럽다.
+# 바꾸는 방법: 제목 옆 [냉장고 | 장보기] 버튼, 손잡이 누르기, 사이드바·아래 메뉴의 '장보기'
+# ---------------------------------------------------------------
+VIEW_FRIDGE, VIEW_DOOR = "fridge", "door"
+st.session_state.setdefault("home_view", VIEW_FRIDGE)
+# 휴대폰 아래 메뉴는 주소 끝 ?show=fridge|door 로 어느 쪽을 볼지 알려 준다.
+if st.query_params.get("show") in (VIEW_FRIDGE, VIEW_DOOR):
+    st.session_state.home_view = st.query_params["show"]
+    del st.query_params["show"]
+DOOR_CLOSED = st.session_state.home_view == VIEW_DOOR
+
+
+def on_view_change():
+    """제목 옆 버튼을 누르면 문을 열거나 닫는다. (이미 고른 쪽을 다시 누르면 그대로)"""
+    picked = st.session_state.get("home_view_ctl")
+    if picked:
+        st.session_state.home_view = picked
+
+
+# 제목 줄: 왼쪽 제목, 오른쪽 [🧊 냉장고 | 🛒 장보기] 전환 버튼
+cart_count = shop.unchecked_count(shop.load())
+# (휴대폰은 화면 아래 메뉴에 냉장고/장보기가 따로 있어서 제목만 둔다)
+if MOBILE:
+    st.title("🛒 장보기" if DOOR_CLOSED else "🧊 냉장고")
+else:
+    col_title, col_view = st.columns([1.2, 1], vertical_alignment="bottom")
+    col_title.title("🛒 장보기" if DOOR_CLOSED else "🧊 냉장고")
+    st.session_state.home_view_ctl = st.session_state.home_view  # 손잡이·메뉴로 바뀐 것도 버튼에 반영
+    col_view.segmented_control(
+        "보기", [VIEW_FRIDGE, VIEW_DOOR], key="home_view_ctl", on_change=on_view_change,
+        format_func=lambda v: "🧊 냉장고" if v == VIEW_FRIDGE else f"🛒 장보기{f' {cart_count}' if cart_count else ''}",
+        label_visibility="collapsed", width="stretch",
+    )
 
 # 화면이 다시 그려질 때마다 파일에서 최신 목록을 읽어 온다.
 items = store.load_items()
@@ -108,17 +148,27 @@ WEEK_DAYS = 7  # 맨 위 요약의 "7일 이내" (3일 이내와 겹치지 않�
 
 
 def summary_badges():
-    """맨 위 한 줄 요약: 기한 지남 / 3일 이내 / 7일 이내 재료 개수 배지 (여유·기한 없음은 표시하지 않음)"""
+    """맨 위 한 줄 요약 문장: 기한 지난 재료(빨간 굵은 글씨) / 3일 안 / 일주일 안에 먹을 재료 개수
+
+    여유·기한 없음 재료는 세지 않는다. 모두 0이면 급한 재료가 없다고 알려 준다.
+    (ui.py의 .ft-summary 스타일, markdown(unsafe_allow_html=True)로 보여 준다)
+    """
     groups = store.expiry_summary(items)
-    week = [
+    expired = len(groups[store.STATUS_EXPIRED])
+    soon = len(groups[store.STATUS_SOON])
+    week = len([
         item for item in groups[store.STATUS_OK]
         if store.days_left(store.earliest_batch(item)["expiry"]) <= WEEK_DAYS
-    ]
-    return (
-        f":red-badge[🔴 기한 지남 {len(groups[store.STATUS_EXPIRED])}] "
-        f":orange-badge[🟠 {store.SOON_DAYS}일 이내 {len(groups[store.STATUS_SOON])}] "
-        f":yellow-badge[🟡 {WEEK_DAYS}일 이내 {len(week)}]"
-    )
+    ])
+    parts = []
+    if expired:
+        parts.append(f"<b>기한 지난 재료 {expired}개</b>")
+    if soon:
+        parts.append(f"{store.SOON_DAYS}일 안에 먹을 재료 {soon}개")
+    if week:
+        parts.append(f"일주일 안에 먹을 재료 {week}개")
+    text = ", ".join(parts) if parts else "급하게 먹어야 할 재료가 없어요."
+    return f'<p class="ft-summary">{text}</p>'
 
 
 # ---------------------------------------------------------------
@@ -573,16 +623,38 @@ def open_add_dialog():
     state.add_open = True
 
 
-# 오른쪽 칸에 [＋ 재료 추가]와 그 아래 [여러 재료 사용]을 세로로 놓는다.
-col_summary, col_buttons = st.columns([4, 1.5], vertical_alignment="center")
-col_summary.markdown(summary_badges())
-col_buttons.button("＋ 재료 추가", type="primary", width="stretch", on_click=open_add_dialog)
-col_buttons.button("여러 재료 사용", width="stretch", on_click=start_multi, disabled=state.multi_mode)
+# 머리 영역(높이 고정): 평소에는 요약 + 버튼, 여러 재료 사용 중에는 안내 + [완료] [취소]
+# 높이가 늘 같아서 아래 냉장고 그림이 장보기 페이지의 닫힌 문과 같은 자리에 온다.
+head = ui.page_head(MOBILE)
+if not DOOR_CLOSED:
+    with head:
+        if state.multi_mode:
+            alive = {i["id"] for i in store.fridge_items_sorted(items)}
+            state.multi_selected = [i for i in state.multi_selected if i in alive]
+            st.markdown(f"**사용할 재료를 눌러 고르세요.** ({len(state.multi_selected)}개 선택)")
+            with st.container(key="row_buttons_multi"):
+                col_done, col_cancel, _ = st.columns([1, 1, 0.01 if MOBILE else 2])
+            col_done.button(
+                "완료", type="primary", width="stretch", on_click=finish_select, disabled=not state.multi_selected
+            )
+            col_cancel.button("취소", width="stretch", on_click=cancel_multi)
+        elif MOBILE:
+            # 휴대폰: 요약 한 줄 아래에 버튼 2개를 가로로 (장보기 쪽 머리 영역과 같은 자리)
+            st.markdown(summary_badges(), unsafe_allow_html=True)
+            with st.container(key="row_buttons"):
+                col_add, col_multi = st.columns(2)
+                col_add.button("＋ 추가", type="primary", width="stretch", on_click=open_add_dialog)
+                col_multi.button("여러 개 사용", width="stretch", on_click=start_multi)
+        else:
+            # PC: 왼쪽 요약·도움말, 오른쪽 [＋ 재료 추가]와 그 아래 [여러 재료 사용]
+            col_summary, col_buttons = st.columns([4, 1.5], vertical_alignment="center")
+            col_summary.markdown(summary_badges(), unsafe_allow_html=True)
+            col_summary.caption("재료를 누르면 사용·소진·폐기, 끌면 칸을 옮길 수 있어요.")
+            col_buttons.button("＋ 재료 추가", type="primary", width="stretch", on_click=open_add_dialog)
+            col_buttons.button("여러 재료 사용", width="stretch", on_click=start_multi)
 
-# 직전 작업의 결과 메시지 표시 (한 번 보여 주고 지운다)
-if "flash" in state:
-    ok, message = state.pop("flash")
-    (st.success if ok else st.warning)(message)
+# 직전 작업의 결과 메시지 (자리를 차지하지 않는 알림)
+ui.show_flash()
 
 
 # ---------------------------------------------------------------
@@ -607,25 +679,28 @@ def on_select():
         state.dialog_item = selected
 
 
-if not store.fridge_items_sorted(items):
-    st.info("냉장고가 비어 있어요. '＋ 재료 추가'로 재료를 넣어 보세요.")
-else:
-    if state.multi_mode:
-        # 선택 모드: 안내 + [완료] [취소]
-        alive = {i["id"] for i in store.fridge_items_sorted(items)}
-        state.multi_selected = [i for i in state.multi_selected if i in alive]
-        col_info, col_done, col_cancel = st.columns([3.2, 1, 1], vertical_alignment="center")
-        col_info.info(f"사용할 재료를 눌러 고르세요. ({len(state.multi_selected)}개 선택)")
-        col_done.button(
-            "완료", type="primary", width="stretch", on_click=finish_select, disabled=not state.multi_selected
-        )
-        col_cancel.button("취소", width="stretch", on_click=cancel_multi)
-    else:
-        st.caption("재료를 누르면 사용·소진·폐기, 끌면 칸을 옮길 수 있어요.")
+def on_close_door():
+    """냉장고 그림의 손잡이를 누르면 문을 닫는다. → 장보기"""
+    if not state.multi_mode:
+        state.home_view = VIEW_DOOR
+
+
+# 문 모양(열림/닫힘). 바뀔 때마다 CSS transition으로 부드럽게 돈다.
+st.html(shopping_panel.door_css(
+    DOOR_CLOSED, FRIDGE_HEIGHT_MOBILE if MOBILE else FRIDGE_HEIGHT, MOBILE, state.get("page_changed", False),
+    right=0 if MOBILE else TRAY_WIDTH + TRAY_GAP,  # PC: 옆의 새 재료 봉투는 가리지 않는다.
+))
+with st.container(key="fridge_stage"):
     fridge_board(
         items, key=BOARD_KEY, on_move=on_move, on_select=on_select,
         on_toggle=on_toggle, select_mode=state.multi_mode, selected=state.multi_selected,
+        on_close=on_close_door,
+        # 다른 페이지에서 냉장고(문 열린 상태)로 들어왔을 때만 문 열림 효과
+        animate=state.get("page_changed", False) and not DOOR_CLOSED, mobile=MOBILE,
+        hide_outside=DOOR_CLOSED,  # 문이 닫히면(장보기) 냉장고 밖(실온)은 안 보이게
     )
+    door = st.container(key="fridge_door", gap="small")
+shopping_panel.render(head, door, MOBILE, show_head=DOOR_CLOSED)
 
 # 열려 있어야 하는 팝업을 연다. (한 번에 하나만)
 if state.rebuy:

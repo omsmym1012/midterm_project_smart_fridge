@@ -1,0 +1,27 @@
+# 앱 색·글꼴 (4단계 디자인)
+# [theme.light] / [theme.dark]를 둘 다 정해 두면, 기기 설정(밝게/어둡게)을 따라가고
+# 오른쪽 위 ⋮ → Settings에서 직접 바꿀 수도 있다. (다크 모드)
+# 글꼴: 가전 라벨처럼 또렷한 IBM Plex Sans KR. (메모지 손글씨 Gaegu는 ui.py에서 불러온다)
+[theme]
+font = "IBM Plex Sans KR:https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap, sans-serif"
+baseRadius = "8px"
+
+[theme.light]
+primaryColor = "#2456C8"
+backgroundColor = "#F4F7F9"
+secondaryBackgroundColor = "#E9EEF2"
+textColor = "#1C2430"
+borderColor = "#DCE3E8"
+
+[theme.light.sidebar]
+backgroundColor = "#FFFFFF"
+
+[theme.dark]
+primaryColor = "#6E9BFF"
+backgroundColor = "#12171D"
+secondaryBackgroundColor = "#1C232B"
+textColor = "#E4EAF0"
+borderColor = "#2A333D"
+
+[theme.dark.sidebar]
+backgroundColor = "#1C232B"

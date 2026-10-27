@@ -2,9 +2,10 @@
 
 실행: streamlit run app.py
 
-이 파일은 사이드바 메뉴만 만들고, 실제 화면은 views/ 폴더의 페이지 파일이 그린다.
-    views/fridge.py   🧊 냉장고 (칸 그림 + 재료 팝업)
-    views/shopping.py 🛒 장보기
+이 파일은 사이드바 메뉴(휴대폰은 아래쪽 메뉴 막대)와 앱 전체 스타일만 담당하고,
+실제 화면은 views/ 폴더의 페이지 파일이 그린다.
+    views/fridge.py   🧊 냉장고 · 장보기 한 화면 (냉장고 그림 위에 장보기 '문'을 겹쳐 열고 닫는다)
+    views/shopping.py 🛒 장보기 메뉴 (문을 닫은 상태로 냉장고 화면에 보낸다)
     views/recipe.py   🍳 요리 추천
 """
 
@@ -12,21 +13,42 @@ import streamlit as st
 
 import sample_data
 import shopping_store
+import ui
 
-st.set_page_config(page_title="스마트 냉장고", page_icon="🧊")
+# 휴대폰이면 사이드바를 접어 두고, 아래쪽 메뉴 막대로 이동한다. (ui.py)
+mobile = ui.is_mobile()
+st.set_page_config(
+    page_title="스마트 냉장고", page_icon="🧊", initial_sidebar_state="collapsed" if mobile else "auto"
+)
+
+# 앱 전체 스타일(색·글꼴은 .streamlit/config.toml) + 다크 모드·화면 폭 감시
+ui.apply_style(mobile)
+ui.watch()
 
 # 메뉴의 "장보기" 옆에 아직 안 산 항목 개수를 보여 준다. 예: "장보기 (3)"
 count = shopping_store.unchecked_count(shopping_store.load())
 
 # st.Page: 페이지 하나. url_path를 정해 두면 제목(개수)이 바뀌어도 같은 페이지로 인식된다.
-pages = [
-    st.Page("views/fridge.py", title="냉장고", icon="🧊", url_path="fridge", default=True),
-    st.Page("views/shopping.py", title=f"장보기 ({count})" if count else "장보기", icon="🛒", url_path="shopping"),
-    st.Page("views/recipe.py", title="요리 추천", icon="🍳", url_path="recipe"),
-]
+fridge_page = st.Page("views/fridge.py", title="냉장고", icon="🧊", url_path="fridge", default=True)
+shopping_page = st.Page(
+    "views/shopping.py", title=f"장보기 ({count})" if count else "장보기", icon="🛒", url_path="shopping"
+)
+recipe_page = st.Page("views/recipe.py", title="요리 추천", icon="🍳", url_path="recipe")
 
 # st.navigation: 왼쪽 사이드바에 메뉴를 만들고, 고른 페이지를 실행한다.
-page = st.navigation(pages)
+page = st.navigation([fridge_page, shopping_page, recipe_page])
+
+# 다른 페이지에서 막 넘어왔는지 기억한다. (냉장고 문 열림/닫힘 효과를 넘어올 때만 보여 주려고)
+st.session_state.page_changed = st.session_state.get("current_page") != page.url_path
+st.session_state.current_page = page.url_path
+
+# 휴대폰: 화면 아래쪽 메뉴 막대. 냉장고·장보기는 같은 화면이라 ?show=fridge|door 로 문을 열고 닫는다.
+if mobile:
+    ui.bottom_nav([
+        (fridge_page, "냉장고", {"show": "fridge"}),
+        (fridge_page, f"장보기{f' {count}' if count else ''}", {"show": "door"}),
+        (recipe_page, "요리", None),
+    ])
 
 
 # ---------------------------------------------------------------
