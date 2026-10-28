@@ -82,7 +82,7 @@ CSS = """
 .fb-section { position: relative; display: flex; flex-direction: column; }
 .fb-fridge-part { flex: 1; }
 .fb-fridge-part .fb-cavity { flex: 1; }
-.fb-fridge-part .fb-shelves .fb-zone { flex: 1; }
+.fb-fridge-part .fb-shelves .fb-zone { flex: 1 0 auto; }   /* 남는 높이는 나눠 갖되, 재료보다 작아지지는 않게 */
 .fb-section-title {
     font-weight: 700; font-size: 0.78rem; letter-spacing: 0.02em;
     padding: 0 4px 4px; opacity: 0.75;
@@ -92,7 +92,7 @@ CSS = """
     display: grid; grid-template-columns: 1fr 34%; gap: 8px;
 }
 .fb-shelves {
-    position: relative; overflow: hidden;
+    position: relative;   /* 넘쳐도 자르지 않는다 (재료가 많으면 칸이 길어진다) */
     display: flex; flex-direction: column;
     background: var(--fb-inside);
     border-radius: 8px;
@@ -102,7 +102,7 @@ CSS = """
 .fb-freezer .fb-shelves { background: var(--fb-frost); }
 /* 안쪽 위의 조명 */
 .fb-shelves::before {
-    content: ""; position: absolute; left: 15%; right: 15%; top: -30px; height: 70px;
+    content: ""; position: absolute; left: 15%; right: 15%; top: 0; height: 40px; border-radius: 8px 8px 0 0;
     background: radial-gradient(ellipse at center, var(--fb-light), transparent 70%);
     pointer-events: none;
 }
@@ -189,6 +189,8 @@ CSS = """
     border: none; border-radius: 8px; background: var(--fb-primary); color: #fff;
 }
 .fb-dark .fb-tray-btn { color: #0d1420; }
+.fb-tray-btns { display: flex; gap: 6px; }
+.fb-tray-btn.fb-secondary { background: var(--fb-chip); color: var(--st-text-color, inherit); border: 1px solid var(--fb-line); }
 .fb-tray-btn:focus-visible { outline: 2px solid var(--fb-bag-text); outline-offset: 2px; }
 .fb-new-bar { font-size: 0.82rem; font-weight: 700; color: var(--fb-bag-text); margin-bottom: 4px; }
 /* 자동으로 넣은 재료: 노란 형광펜 ([완료]를 누르면 사라진다) */
@@ -368,17 +370,20 @@ export default function (component) {
     // 봉투에 재료가 있으면 [추천 칸에 모두 넣기], 자동으로 넣은 재료가 있으면 "새로 넣은 재료 N개 [완료]"
     const newIds = new Set(data.newIds || []);
     const inTray = data.items.filter((item) => !(item.zone && lists[item.zone])).length;
-    function trayButton(text, trigger) {
-        const btn = el("button", "fb-tray-btn", text);
+    function trayButton(text, trigger, extraClass) {
+        const btn = el("button", "fb-tray-btn " + (extraClass || ""), text);
         btn.type = "button";
         btn.addEventListener("click", () => setTriggerValue(trigger, Date.now()));
-        tray.insertBefore(btn, lists.tray);
+        return btn;
     }
     if (newIds.size) {
         tray.insertBefore(el("div", "fb-new-bar", "새로 넣은 재료 " + newIds.size + "개"), lists.tray);
-        trayButton("완료", "done");
+        // [완료]: 표시만 지우기 / [취소]: 방금 넣은 재료를 다시 봉투로
+        const row = el("div", "fb-tray-btns");
+        row.append(trayButton("완료", "done"), trayButton("취소", "undo", "fb-secondary"));
+        tray.insertBefore(row, lists.tray);
     }
-    if (inTray) trayButton("추천 칸에 모두 넣기", "autoplace");
+    if (inTray) tray.insertBefore(trayButton("추천 칸에 모두 넣기", "autoplace"), lists.tray);
 
     function setRecommend(zoneId, on) {
         zoneBoxes.forEach((box) => box.classList.toggle("fb-recommend", on && box.dataset.zone === zoneId));
@@ -513,7 +518,7 @@ def _board_data(items):
 
 
 def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mobile=False, on_close=None,
-                 hide_outside=False, new_ids=(), on_autoplace=None, on_done=None):
+                 hide_outside=False, new_ids=(), on_autoplace=None, on_done=None, on_undo=None):
     """냉장고 칸 화면을 그린다.
 
     재료를 다른 칸에 놓으면 on_move, 누르면 on_toggle이 화면을 다시 그리기 전에 먼저 실행된다.
@@ -525,7 +530,7 @@ def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mob
     on_close: 냉장실 문 손잡이를 눌렀을 때 실행 (문 닫기 → 장보기)
     hide_outside=True: 냉장고 밖(조리대)을 감춘다 (문이 닫힌 장보기 화면)
     new_ids: 자동으로 넣어서 노란 형광펜으로 표시할 재료 id들
-    on_autoplace: 봉투의 [추천 칸에 모두 넣기]를 눌렀을 때, on_done: [완료]를 눌렀을 때 실행
+    on_autoplace: 봉투의 [추천 칸에 모두 넣기]를 눌렀을 때, on_done: [완료], on_undo: [취소]를 눌렀을 때 실행
     """
     data = _board_data(items)
     data["selected"] = list(selected)
@@ -541,4 +546,5 @@ def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mob
         on_move_change=on_move, on_toggle_change=on_toggle,
         on_close_change=on_close or (lambda: None),
         on_autoplace_change=on_autoplace or (lambda: None), on_done_change=on_done or (lambda: None),
+        on_undo_change=on_undo or (lambda: None),
     )

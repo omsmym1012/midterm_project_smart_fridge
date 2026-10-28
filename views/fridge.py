@@ -544,6 +544,16 @@ def on_done():
     state.new_ids = []
 
 
+def on_undo():
+    """[취소]: 방금 자동으로 넣은 재료를 다시 새 재료 봉투로 돌려놓는다."""
+    all_items = store.load_items()
+    for item_id in state.new_ids:
+        store.set_zone(all_items, item_id, None)
+    if state.new_ids:
+        state.flash = (True, f"넣기를 취소했어요. 재료 {len(state.new_ids)}개가 새 재료 봉투로 돌아갔어요.")
+    state.new_ids = []
+
+
 def on_close_door():
     """냉장고 그림의 손잡이를 누르면 문을 닫는다. → 장보기"""
     state.home_view = VIEW_DOOR
@@ -561,7 +571,7 @@ with st.container(key="fridge_stage"):
         # 다른 페이지에서 냉장고(문 열린 상태)로 들어왔을 때만 문 열림 효과
         animate=state.get("page_changed", False) and not DOOR_CLOSED, mobile=MOBILE,
         hide_outside=DOOR_CLOSED,  # 문이 닫히면(장보기) 냉장고 밖(실온)은 안 보이게
-        new_ids=state.new_ids, on_autoplace=on_autoplace, on_done=on_done,
+        new_ids=state.new_ids, on_autoplace=on_autoplace, on_done=on_done, on_undo=on_undo,
     )
     door = st.container(key="fridge_door", gap="small")
 shopping_panel.render(head, door, MOBILE, show_head=DOOR_CLOSED)
