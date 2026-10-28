@@ -6,7 +6,7 @@
   - 누르면 고르기/풀기. 다 고른 뒤 [사용]을 누르면 재료마다 사용(양)·소진·폐기를 한 번에 처리한다.
 - 냉장고 그림 위에 장보기 "문"(shopping_panel.py)을 겹쳐 두고, 문을 열고 닫아서 냉장고/장보기를 오간다.
 
-app.py의 사이드바 메뉴에서 "냉장고"를 고르면 이 파일이 실행된다. ("장보기"는 문을 닫은 채로 이 화면)
+app.py의 사이드바 메뉴에서 "냉장고"를 고르면 이 파일이 실행된다. 
 """
 
 from datetime import date
@@ -19,6 +19,7 @@ import shopping_store as shop
 import shopping_panel
 import ui
 from fridge_board import FRIDGE_HEIGHT, FRIDGE_HEIGHT_MOBILE, TRAY_GAP, TRAY_WIDTH, fridge_board
+from fridge_board import recommend as board_recommend
 
 MOBILE = ui.is_mobile()  # 휴대폰 화면이면 버튼·냉장고 그림 배치를 바꾼다.
 
@@ -26,7 +27,7 @@ MOBILE = ui.is_mobile()  # 휴대폰 화면이면 버튼·냉장고 그림 배�
 # 냉장고 · 장보기 한 화면
 # 냉장고 그림 위에 같은 크기의 "문"(장보기)을 겹쳐 두고, 문을 열고 닫아서 두 화면을 오간다.
 # 페이지를 바꾸지 않고 문 모양(CSS)만 바꾸므로 열리고 닫히는 움직임이 부드럽다.
-# 바꾸는 방법: 제목 옆 [냉장고 | 장보기] 버튼, 손잡이 누르기, 사이드바·아래 메뉴의 '장보기'
+# 바꾸는 방법: 제목 옆 [냉장고 | 장보기] 버튼, 손잡이 누르기, 휴대폰 아래 메뉴의 '장보기'
 # ---------------------------------------------------------------
 VIEW_FRIDGE, VIEW_DOOR = "fridge", "door"
 st.session_state.setdefault("home_view", VIEW_FRIDGE)
@@ -77,6 +78,7 @@ state = st.session_state
 # ---------------------------------------------------------------
 state.setdefault("add_open", False)     # 재료 추가 팝업이 열려 있는지
 state.setdefault("multi_selected", [])  # 칸 그림에서 고른 재료 id들
+state.setdefault("new_ids", [])         # 봉투에서 추천 칸으로 자동으로 넣어 "새"로 표시 중인 재료 id들
 state.setdefault("multi_open", False)   # 고른 재료 사용 팝업이 열려 있는지
 state.setdefault("bulk_rebuy", None)    # 사용·소진·폐기로 없어진 재료들 (장바구니에 담을지 한 번에 묻기)
 
@@ -478,6 +480,7 @@ def open_add_dialog():
 # 높이가 늘 같아서 아래 냉장고 그림이 장보기의 닫힌 문과 같은 자리에 온다.
 alive = {i["id"] for i in store.fridge_items_sorted(items)}
 state.multi_selected = [i for i in state.multi_selected if i in alive]  # 없어진 재료는 선택에서 뺀다.
+state.new_ids = [i for i in state.new_ids if i in alive]
 picked = len(state.multi_selected)
 use_label = f"사용 ({picked})" if picked else "사용"
 head = ui.page_head(MOBILE)
@@ -521,6 +524,26 @@ def on_move():
         store.set_zone(store.load_items(), move.get("item_id"), move.get("zone"))
 
 
+def on_autoplace():
+    """봉투의 [추천 칸에 모두 넣기]: 칸이 없는 재료를 모두 추천 칸에 넣고, 넣은 재료를 "새"로 표시해 둔다."""
+    all_items = store.load_items()
+    cache = classifier.load_cache()
+    placed = [
+        item for item in store.fridge_items_sorted(all_items)
+        if item.get("zone") not in store.ZONES
+        and store.set_zone(all_items, item["id"], board_recommend(item, cache))
+    ]
+    # shortcut: "새" 표시는 화면 기억(session_state)에만 둔다. 새로고침하면 사라짐, 남겨야 하면 fridge.json에 저장
+    state.new_ids = state.new_ids + [item["id"] for item in placed]
+    if placed:
+        state.flash = (True, f"추천 칸에 넣었어요: {', '.join(item['name'] for item in placed)}")
+
+
+def on_done():
+    """[완료]: "새" 표시를 지워서 다른 재료와 똑같이 보이게 한다."""
+    state.new_ids = []
+
+
 def on_close_door():
     """냉장고 그림의 손잡이를 누르면 문을 닫는다. → 장보기"""
     state.home_view = VIEW_DOOR
@@ -538,6 +561,7 @@ with st.container(key="fridge_stage"):
         # 다른 페이지에서 냉장고(문 열린 상태)로 들어왔을 때만 문 열림 효과
         animate=state.get("page_changed", False) and not DOOR_CLOSED, mobile=MOBILE,
         hide_outside=DOOR_CLOSED,  # 문이 닫히면(장보기) 냉장고 밖(실온)은 안 보이게
+        new_ids=state.new_ids, on_autoplace=on_autoplace, on_done=on_done,
     )
     door = st.container(key="fridge_door", gap="small")
 shopping_panel.render(head, door, MOBILE, show_head=DOOR_CLOSED)

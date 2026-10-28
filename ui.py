@@ -98,7 +98,7 @@ html[data-ft="dark"] {
     --ft-nav-bg: rgba(18, 23, 29, 0.96); --ft-nav-line: #2A333D;
     --ft-sub: #93A0AE;
 }
-.block-container { padding-top: 2.5rem; padding-bottom: 3rem; }
+.block-container { padding-top: 3rem; padding-bottom: 3rem; }  /* 위쪽 Streamlit 막대(60px)에 전환 버튼이 가리지 않게 */
 h1 { font-size: 1.6rem !important; }
 /* 맨 위 요약 문장: 보조 글자색, 기한 지난 재료만 빨간 굵은 글씨 */
 .ft-summary { color: var(--ft-sub); margin: 0; }

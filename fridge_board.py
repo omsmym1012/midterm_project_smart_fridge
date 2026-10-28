@@ -182,6 +182,17 @@ CSS = """
     border-top: 2px dashed rgba(90, 68, 41, 0.35);
 }
 .fb-tray .fb-zone-title { color: var(--fb-bag-text); opacity: 0.95; font-weight: 700; }
+/* 봉투 안의 [추천 칸에 모두 넣기] / [완료] 버튼 */
+.fb-tray-btn {
+    display: block; width: 100%; margin: 2px 0 8px; padding: 7px 8px; box-sizing: border-box;
+    font: inherit; font-size: 0.85rem; font-weight: 700; cursor: pointer;
+    border: none; border-radius: 8px; background: var(--fb-primary); color: #fff;
+}
+.fb-dark .fb-tray-btn { color: #0d1420; }
+.fb-tray-btn:focus-visible { outline: 2px solid var(--fb-bag-text); outline-offset: 2px; }
+.fb-new-bar { font-size: 0.82rem; font-weight: 700; color: var(--fb-bag-text); margin-bottom: 4px; }
+/* 자동으로 넣은 재료: 노란 형광펜 ([완료]를 누르면 사라진다) */
+.fb-chip.fb-new { background: color-mix(in srgb, #FFD43B 30%, var(--fb-chip)); }
 
 .fb-zone-title { font-size: 0.75rem; color: var(--fb-sub); margin-bottom: 6px; }
 .fb-list { display: flex; flex-direction: column; gap: 5px; min-height: 26px; }
@@ -354,6 +365,21 @@ export default function (component) {
     lists.tray.dataset.empty = "새 재료가 없어요";
     root.append(left, tray);
 
+    // 봉투에 재료가 있으면 [추천 칸에 모두 넣기], 자동으로 넣은 재료가 있으면 "새로 넣은 재료 N개 [완료]"
+    const newIds = new Set(data.newIds || []);
+    const inTray = data.items.filter((item) => !(item.zone && lists[item.zone])).length;
+    function trayButton(text, trigger) {
+        const btn = el("button", "fb-tray-btn", text);
+        btn.type = "button";
+        btn.addEventListener("click", () => setTriggerValue(trigger, Date.now()));
+        tray.insertBefore(btn, lists.tray);
+    }
+    if (newIds.size) {
+        tray.insertBefore(el("div", "fb-new-bar", "새로 넣은 재료 " + newIds.size + "개"), lists.tray);
+        trayButton("완료", "done");
+    }
+    if (inTray) trayButton("추천 칸에 모두 넣기", "autoplace");
+
     function setRecommend(zoneId, on) {
         zoneBoxes.forEach((box) => box.classList.toggle("fb-recommend", on && box.dataset.zone === zoneId));
     }
@@ -370,6 +396,7 @@ export default function (component) {
     function makeChip(item) {
         const chip = el("div", "fb-chip fb-" + item.status);
         if (selected.has(item.id)) chip.classList.add("fb-selected");
+        if (newIds.has(item.id)) chip.classList.add("fb-new");
         chip.append(el("span", "fb-name", item.name), el("span", "fb-meta", item.meta));
         chip.title = "추천 칸: " + titles[item.recommend];
 
@@ -486,7 +513,7 @@ def _board_data(items):
 
 
 def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mobile=False, on_close=None,
-                 hide_outside=False):
+                 hide_outside=False, new_ids=(), on_autoplace=None, on_done=None):
     """냉장고 칸 화면을 그린다.
 
     재료를 다른 칸에 놓으면 on_move, 누르면 on_toggle이 화면을 다시 그리기 전에 먼저 실행된다.
@@ -497,6 +524,8 @@ def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mob
     mobile=True: 휴대폰 화면 배치 (글씨 작게)
     on_close: 냉장실 문 손잡이를 눌렀을 때 실행 (문 닫기 → 장보기)
     hide_outside=True: 냉장고 밖(조리대)을 감춘다 (문이 닫힌 장보기 화면)
+    new_ids: 자동으로 넣어서 노란 형광펜으로 표시할 재료 id들
+    on_autoplace: 봉투의 [추천 칸에 모두 넣기]를 눌렀을 때, on_done: [완료]를 눌렀을 때 실행
     """
     data = _board_data(items)
     data["selected"] = list(selected)
@@ -506,8 +535,10 @@ def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mob
     data["trayWidth"] = TRAY_WIDTH
     data["trayGap"] = TRAY_GAP
     data["hideOutside"] = hide_outside
+    data["newIds"] = list(new_ids)
     _board(
         data=data, key=key,
         on_move_change=on_move, on_toggle_change=on_toggle,
         on_close_change=on_close or (lambda: None),
+        on_autoplace_change=on_autoplace or (lambda: None), on_done_change=on_done or (lambda: None),
     )
