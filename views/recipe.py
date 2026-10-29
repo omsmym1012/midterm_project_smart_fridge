@@ -112,7 +112,7 @@ def render_card(index, pick):
 # ---------------------------------------------------------------
 # 탭 2개: 재료로 찾기 / 요리로 찾기
 # ---------------------------------------------------------------
-tab_ing, tab_dish = st.tabs(["🥕 재료로 찾기", "🍲 요리로 찾기"], key="recipe_tab")
+tab_ing, tab_dish = st.tabs(["🥕 재료로 찾기", "🍲 요리로 찾기"], key="recipe_tab", on_change="rerun")  # 고른 탭을 기억(다른 페이지에 다녀와도)
 
 with tab_ing:
     if not fridge:

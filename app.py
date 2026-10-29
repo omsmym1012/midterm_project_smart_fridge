@@ -34,6 +34,13 @@ recipe_page = st.Page("views/recipe.py", title="요리 추천", icon="🍳", url
 # st.navigation: 왼쪽 사이드바에 메뉴를 만들고, 고른 페이지를 실행한다.
 page = st.navigation([fridge_page, recipe_page])
 
+# 다른 페이지에 다녀와도 입력해 둔 값이 남게 한다.
+# Streamlit은 화면에 없는 입력칸의 값을 지우는데, 매번 같은 값을 다시 넣어 두면 지우지 않는다.
+KEEP_KEYS = ("recipe_tab", "recipe_chosen", "dish_pick", "shop_tab", "shop_name", "shop_quantity", "shop_unit")
+for key in list(st.session_state.keys()):
+    if key in KEEP_KEYS or key.startswith("recipe_missing_"):  # 요리 카드의 '장바구니에 담을 재료' 고르기
+        st.session_state[key] = st.session_state[key]
+
 # 다른 페이지에서 막 넘어왔는지 기억한다. (냉장고 문 열림/닫힘 효과를 넘어올 때만 보여 주려고)
 st.session_state.page_changed = st.session_state.get("current_page") != page.url_path
 st.session_state.current_page = page.url_path
