@@ -344,6 +344,29 @@ def clear_selection():
     state.multi_selected = []
 
 
+def discard_selected():
+    """[폐기]: 고른 재료(모두 기한 지난 재료)의 기한 지난 묶음을 팝업 없이 바로 버린다."""
+    all_items = store.load_items()
+    done, gone = [], []
+    for item in store.fridge_items_sorted(all_items):
+        expired = store.expired_batches(item)
+        if item["id"] not in state.multi_selected or not expired:
+            continue
+        store.discard_batches(all_items, item["id"], [b["id"] for b in expired])
+        done.append(item["name"])
+        if item["status"] == store.STATUS_USED:
+            gone.append({"item_id": item["id"], "name": item["name"], "unit": item["unit"],
+                         "source": shop.SOURCE_DISCARDED})
+    clear_selection()
+    message = f"폐기했어요: {', '.join(done)}."
+    if gone:
+        # 없어진 재료는 장바구니에 담을지 한 번에 묻는다. (사용 팝업과 같은 방식)
+        clear_keys("bulk_")
+        state.bulk_rebuy = {"items": gone, "message": message}
+    else:
+        state.flash = (True, message)
+
+
 def open_use_dialog():
     """[사용]: 고른 재료들을 한 번에 다루는 팝업을 연다."""
     close_dialogs()
@@ -409,13 +432,13 @@ def use_body(chosen, from_selection):
             )
             # 한 줄: [쓰는 양(짧은 칸)] 단위 [소진] [폐기]
             # 소진·폐기를 고르면 쓰는 양 칸은 잠긴다. 다시 누르면 풀려서 '사용'으로 돌아간다.
-            with st.container(horizontal=True, vertical_alignment="center", gap="small", wrap=False):
+            with st.container(horizontal=True, vertical_alignment="center", gap="small", wrap=MOBILE):  # 휴대폰은 좁으면 [소진][폐기]가 다음 줄로
                 act_key = f"multi_act_{item['id']}"
                 picked_act = state.get(act_key)
                 amount = st.number_input(
                     f"{item['name']} 쓰는 양", min_value=0.0, max_value=float(total),
                     value=float(min(1.0, total)), step=1.0, format="%g", key=f"multi_amt_{item['id']}",
-                    label_visibility="collapsed", width=80 if MOBILE else 120, disabled=bool(picked_act),
+                    label_visibility="collapsed", width=130, disabled=bool(picked_act),  # 130px부터 [−][+]가 보인다
                 )
                 st.markdown(item["unit"], width="content")
                 options = [ACT_EMPTY] + ([ACT_DISCARD] if expired else [])  # 폐기는 기한 지난 재료만
@@ -529,6 +552,10 @@ state.multi_selected = [i for i in state.multi_selected if i in alive]  # 없어
 new_ids = [i["id"] for i in store.fridge_items_sorted(items) if i.get("new") and i.get("zone") in store.ZONES]
 picked = len(state.multi_selected)
 use_label = f"사용 ({picked})" if picked else "사용"
+# 고른 재료가 모두 기한 지난 재료면 [사용]을 반으로 줄이고 옆에 [폐기]를 둔다. (팝업 없이 바로 버리기)
+all_expired = picked > 0 and all(
+    store.expired_batches(i) for i in store.fridge_items_sorted(items) if i["id"] in state.multi_selected
+)
 head = ui.page_head(MOBILE)
 if not DOOR_CLOSED:
     with head:
@@ -536,7 +563,12 @@ if not DOOR_CLOSED:
             # 휴대폰: 요약 한 줄 아래에 버튼 3개를 가로로 (장보기 쪽 머리 영역과 같은 자리)
             st.markdown(summary_badges(), unsafe_allow_html=True)
             with st.container(key="row_buttons"):
-                col_add, col_receipt, col_use = st.columns([1, 1.1, 1])
+                if all_expired:
+                    col_add, col_receipt, col_use, col_discard = st.columns([1, 1.1, 0.75, 0.75])
+                    col_discard.button("폐기", key="head_discard", width="stretch", on_click=discard_selected)
+                    use_label = "사용"  # 반 칸이라 개수는 뺀다.
+                else:
+                    col_add, col_receipt, col_use = st.columns([1, 1.1, 1])
                 col_add.button("＋ 추가", width="stretch", on_click=open_add_dialog)
                 col_receipt.button("🧾 영수증", width="stretch", on_click=go_receipt)
                 col_use.button(use_label, type="primary", width="stretch", on_click=open_use_dialog,
@@ -552,8 +584,11 @@ if not DOOR_CLOSED:
             col_add, col_receipt = col_buttons.columns(2, gap="small")
             col_add.button("＋ 재료 추가", width="stretch", on_click=open_add_dialog)
             col_receipt.button("🧾 영수증", width="stretch", on_click=go_receipt)
-            col_buttons.button(use_label, type="primary", width="stretch", on_click=open_use_dialog,
-                               disabled=not picked)
+            col_use, col_discard = col_buttons.columns(2, gap="small") if all_expired else (col_buttons, None)
+            col_use.button(use_label, type="primary", width="stretch", on_click=open_use_dialog,
+                           disabled=not picked)
+            if col_discard:
+                col_discard.button(f"폐기 ({picked})", key="head_discard", width="stretch", on_click=discard_selected)
 
 # 직전 작업의 결과 메시지 (자리를 차지하지 않는 알림)
 ui.show_flash()
