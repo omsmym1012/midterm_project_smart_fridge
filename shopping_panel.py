@@ -12,6 +12,7 @@ import streamlit as st
 
 import classifier
 import fridge_store
+import receipt_panel
 import shopping_store as shop
 
 
@@ -213,8 +214,8 @@ def render(head, door, mobile, show_head):
     if show_head:
         with head:
             # 냉장고 화면의 머리 영역과 같은 배치·같은 버튼 크기로 그려서, 문을 여닫을 때 위쪽도 자연스럽게 바뀐다.
-            #   PC: 오른쪽에 버튼 2개 세로 ([＋ 재료 추가]/[여러 재료 사용] 자리)
-            #   휴대폰: 버튼 2개 가로
+            #   PC: 오른쪽에 [＋ 직접 추가][🧾 영수증] 한 줄, 그 아래 [냉장고 넣기] ([＋ 재료 추가][🧾 영수증]/[사용] 자리)
+            #   휴대폰: 버튼 3개 가로
             # 두 버튼은 문 안의 탭으로 바로 가는 지름길이다.
             to_cart = lambda: st.session_state.update(goto_tab=TAB_CART)
             to_put = lambda: st.session_state.update(goto_tab=TAB_PUT)
@@ -222,13 +223,15 @@ def render(head, door, mobile, show_head):
             if MOBILE:
                 st.markdown(summary, unsafe_allow_html=True)
                 with st.container(key="row_buttons"):
-                    col_add, col_put = st.columns(2)
+                    col_add, col_receipt, col_put = st.columns([1, 1.1, 1])
             else:
-                col_summary, col_buttons = st.columns([4, 1.5], vertical_alignment="center")
+                col_summary, col_buttons = st.columns([3.2, 2], vertical_alignment="center")
                 col_summary.markdown(summary, unsafe_allow_html=True)
                 col_summary.caption("체크한 재료는 '냉장고 넣기'에서 한 번에 냉장고로 들어가요.")
-                col_add = col_put = col_buttons
+                col_add, col_receipt = col_buttons.columns(2, gap="small")
+                col_put = col_buttons
             col_add.button("＋ 직접 추가", key="head_add", width="stretch", on_click=to_cart)
+            col_receipt.button("🧾 영수증", key="head_receipt", width="stretch", on_click=receipt_panel.open_receipt)
             col_put.button(put_label, key="head_put", type="primary", width="stretch",
                            disabled=not bought_count, on_click=to_put)
 
@@ -467,6 +470,9 @@ def render(head, door, mobile, show_head):
             # ---------------------------------------------------------------
             # 4) 냉장고 넣기: 장바구니에서 체크한(산) 재료를 확인하고 한 번에 냉장고에 넣기
             # ---------------------------------------------------------------
+            # 영수증이 있으면 영수증 팝업에서 한 번에 넣을 수 있다.
+            st.button("🧾 영수증으로 한 번에 넣기", key="put_receipt", type="tertiary",
+                      on_click=receipt_panel.open_receipt)
             bought = shop.checked_items(data)
             if not bought:
                 st.caption("장바구니에서 산 재료를 체크하면 여기에 나와요.")

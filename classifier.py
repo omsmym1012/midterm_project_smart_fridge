@@ -515,3 +515,19 @@ def name_zone(name, cache=None):
 def load_cache():
     """캐시를 한 번 읽어 둘 때 쓴다. (name_zone에 넘기기용)"""
     return _load_cache()
+
+
+def classify_quick(name):
+    """AI를 부르지 않고 저장된 결과·미리 만든 목록에서만 분류한다. 모르면 None.
+
+    영수증처럼 재료가 한꺼번에 많을 때, 화면을 빨리 보여 주기 위해 쓴다.
+    """
+    cache = _load_cache()
+    key = _normalize(name)
+    if key in cache:
+        return {**cache[key], "source": "cache"}
+    builtin = _from_builtin(name)
+    if builtin:
+        category, storage, unit, tip = builtin
+        return {"category": category, "storage": "냉동" if "냉동" in key else storage, "unit": unit, "tip": tip}
+    return None

@@ -8,6 +8,7 @@
   - `app.py`: 진입 파일, 사이드바 메뉴(`st.navigation`, 휴대폰은 아래쪽 메뉴 막대)와 앱 전체 스타일 담당
   - `views/fridge.py`(냉장고 · 장보기 한 화면: 냉장고 그림 위에 장보기 '문'을 겹쳐 열고 닫음), `views/recipe.py`(요리 추천): 페이지 화면
   - `shopping_panel.py`: 장보기 문 안의 내용(다시 사기/장바구니/냉장고 넣기)과 문 CSS
+  - `receipt_panel.py`: 영수증 등록 팝업 (사진 찍기/올리기 → 확인·수정 표 → 냉장고에 넣기), `receipt_reader.py`: 영수증 사진을 AI로 읽기 (사진은 저장하지 않음)
   - `ui.py`: 화면 공통 (다크 모드·휴대폰 화면 감지, 머리 영역, 알림, 아래쪽 메뉴, 앱 전체 CSS)
   - `.streamlit/config.toml`: 앱 색·글꼴 테마 (밝게/어둡게)
   - `fridge_store.py`: 냉장고 데이터 저장/불러오기 (`data/fridge.json`)
@@ -15,7 +16,7 @@
   - `shopping_store.py`: 장보기 데이터 저장/불러오기, 추천 후보 (`data/shopping.json`)
   - `classifier.py`: 재료 분류·추천 단위 (목록 → AI, 결과는 `data/classify_cache.json`)
   - `recipe_store.py`: 요리 추천 (식품안전나라 레시피 → 부족하면 AI, 레시피는 `data/recipes.json`)
-  - `ai_client.py`: OpenRouter 호출 공통 (무료 모델 차례로 시도)
+  - `ai_client.py`: OpenRouter 호출 공통 (무료 모델 차례로 시도, 사진을 읽는 모델 목록 따로)
   - `sample_data.py`: 테스트 데이터 (사이드바 "🧪 테스트 데이터 넣기")
 - 배포 예정: Streamlit Community Cloud
 

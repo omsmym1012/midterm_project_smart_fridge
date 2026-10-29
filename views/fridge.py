@@ -16,6 +16,7 @@ import streamlit as st
 import classifier
 import fridge_store as store
 import shopping_store as shop
+import receipt_panel
 import shopping_panel
 import ui
 from fridge_board import FRIDGE_HEIGHT, FRIDGE_HEIGHT_MOBILE, TRAY_GAP, TRAY_WIDTH, fridge_board
@@ -85,7 +86,7 @@ state.setdefault("bulk_rebuy", None)    # 사용·소진·폐기로 없어진 �
 
 # 새로고침해도 열려 있던 팝업이 다시 뜨도록 주소 끝 ?popup=add|use|put (고른 재료는 &pick=id,id)에 적어 둔다.
 # 새로고침하면 화면 기억이 비므로, 처음 실행할 때 한 번만 주소를 읽는다. (팝업 안에 적던 내용은 남지 않는다)
-POPUP_FLAGS = {"add": "add_open", "use": "multi_open", "put": "put_ask"}
+POPUP_FLAGS = {"add": "add_open", "use": "multi_open", "put": "put_ask", "receipt": "receipt_open"}
 if "popup_restored" not in state:
     state.popup_restored = True
     if st.query_params.get("pick"):
@@ -98,6 +99,7 @@ def close_dialogs():
     """팝업을 닫는다. (팝업 ✕를 눌렀을 때도 실행)"""
     state.add_open = False
     state.multi_open = False
+    state.receipt_open = False
 
 
 # ---------------------------------------------------------------
@@ -307,7 +309,12 @@ def add_dialog():
     col_qty.number_input("수량", min_value=0.1, step=1.0, format="%g", key="add_quantity")
     col_unit.selectbox("단위", unit_options, key="add_unit", on_change=on_unit_change)
 
-    st.button("추가", type="primary", on_click=on_add_click)
+    col_add, col_receipt = st.columns([1, 2], vertical_alignment="center")
+    col_add.button("추가", type="primary", on_click=on_add_click, width="stretch")
+    # 장 본 재료가 많으면 영수증으로 한 번에 넣는 게 편하다. (이 팝업을 닫고 영수증 팝업을 연다)
+    if col_receipt.button("🧾 영수증으로 한 번에 추가", type="tertiary"):
+        go_receipt()
+        st.rerun()
 
     # 단위가 달라 따로 추가되는 경우의 확인 창
     if state.add_confirm:
@@ -481,6 +488,12 @@ def bulk_rebuy_dialog():
 # ---------------------------------------------------------------
 # 5) 맨 위: 상태별 개수 + [+ 재료 추가] [사용 (고른 개수)]
 # ---------------------------------------------------------------
+def go_receipt():
+    """[🧾 영수증]: 다른 팝업을 닫고 영수증 등록 팝업을 연다."""
+    close_dialogs()
+    receipt_panel.open_receipt()
+
+
 def open_add_dialog():
     close_dialogs()
     state.pop("add_msg", None)
@@ -499,22 +512,25 @@ head = ui.page_head(MOBILE)
 if not DOOR_CLOSED:
     with head:
         if MOBILE:
-            # 휴대폰: 요약 한 줄 아래에 버튼 2개를 가로로 (장보기 쪽 머리 영역과 같은 자리)
+            # 휴대폰: 요약 한 줄 아래에 버튼 3개를 가로로 (장보기 쪽 머리 영역과 같은 자리)
             st.markdown(summary_badges(), unsafe_allow_html=True)
             with st.container(key="row_buttons"):
-                col_add, col_use = st.columns(2)
+                col_add, col_receipt, col_use = st.columns([1, 1.1, 1])
                 col_add.button("＋ 추가", width="stretch", on_click=open_add_dialog)
+                col_receipt.button("🧾 영수증", width="stretch", on_click=go_receipt)
                 col_use.button(use_label, type="primary", width="stretch", on_click=open_use_dialog,
                                disabled=not picked)
         else:
-            # PC: 왼쪽 요약·도움말(고른 게 있으면 [선택 해제]), 오른쪽 [＋ 재료 추가]와 그 아래 [사용]
-            col_summary, col_buttons = st.columns([4, 1.5], vertical_alignment="center")
+            # PC: 왼쪽 요약·도움말(고른 게 있으면 [선택 해제]), 오른쪽 [＋ 재료 추가][🧾 영수증]과 그 아래 [사용]
+            col_summary, col_buttons = st.columns([3.2, 2], vertical_alignment="center")
             col_summary.markdown(summary_badges(), unsafe_allow_html=True)
             if picked:
                 col_summary.button(f"✕ 선택 해제 ({picked})", type="tertiary", on_click=clear_selection)
             else:
                 col_summary.caption("재료를 눌러 고르고 [사용]을 누르세요. 끌면 칸을 옮길 수 있어요.")
-            col_buttons.button("＋ 재료 추가", width="stretch", on_click=open_add_dialog)
+            col_add, col_receipt = col_buttons.columns(2, gap="small")
+            col_add.button("＋ 재료 추가", width="stretch", on_click=open_add_dialog)
+            col_receipt.button("🧾 영수증", width="stretch", on_click=go_receipt)
             col_buttons.button(use_label, type="primary", width="stretch", on_click=open_use_dialog,
                                disabled=not picked)
 
@@ -632,3 +648,5 @@ elif state.multi_open:
     multi_dialog()
 elif state.add_open:
     add_dialog()
+elif state.get("receipt_open"):
+    receipt_panel.receipt_dialog()
