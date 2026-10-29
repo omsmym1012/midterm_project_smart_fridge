@@ -78,7 +78,6 @@ state = st.session_state
 # ---------------------------------------------------------------
 state.setdefault("add_open", False)     # 재료 추가 팝업이 열려 있는지
 state.setdefault("multi_selected", [])  # 칸 그림에서 고른 재료 id들
-state.setdefault("new_ids", [])         # 봉투에서 추천 칸으로 자동으로 넣어 "새"로 표시 중인 재료 id들
 state.setdefault("multi_open", False)   # 고른 재료 사용 팝업이 열려 있는지
 state.setdefault("bulk_rebuy", None)    # 사용·소진·폐기로 없어진 재료들 (장바구니에 담을지 한 번에 묻기)
 
@@ -480,7 +479,8 @@ def open_add_dialog():
 # 높이가 늘 같아서 아래 냉장고 그림이 장보기의 닫힌 문과 같은 자리에 온다.
 alive = {i["id"] for i in store.fridge_items_sorted(items)}
 state.multi_selected = [i for i in state.multi_selected if i in alive]  # 없어진 재료는 선택에서 뺀다.
-state.new_ids = [i for i in state.new_ids if i in alive]
+# 봉투에서 추천 칸으로 자동으로 넣어 노란색으로 표시 중인 재료 (fridge.json의 "new" 표시라 새로고침해도 남는다)
+new_ids = [i["id"] for i in store.fridge_items_sorted(items) if i.get("new") and i.get("zone") in store.ZONES]
 picked = len(state.multi_selected)
 use_label = f"사용 ({picked})" if picked else "사용"
 head = ui.page_head(MOBILE)
@@ -533,25 +533,32 @@ def on_autoplace():
         if item.get("zone") not in store.ZONES
         and store.set_zone(all_items, item["id"], board_recommend(item, cache))
     ]
-    # shortcut: "새" 표시는 화면 기억(session_state)에만 둔다. 새로고침하면 사라짐, 남겨야 하면 fridge.json에 저장
-    state.new_ids = state.new_ids + [item["id"] for item in placed]
+    for item in placed:
+        item["new"] = True  # [완료]를 누를 때까지 노란색으로 표시
     if placed:
+        store.save_items(all_items)
         state.flash = (True, f"추천 칸에 넣었어요: {', '.join(item['name'] for item in placed)}")
 
 
 def on_done():
     """[완료]: "새" 표시를 지워서 다른 재료와 똑같이 보이게 한다."""
-    state.new_ids = []
+    all_items = store.load_items()
+    for item in all_items:
+        item.pop("new", None)
+    store.save_items(all_items)
 
 
 def on_undo():
     """[취소]: 방금 자동으로 넣은 재료를 다시 새 재료 봉투로 돌려놓는다."""
     all_items = store.load_items()
-    for item_id in state.new_ids:
-        store.set_zone(all_items, item_id, None)
-    if state.new_ids:
-        state.flash = (True, f"넣기를 취소했어요. 재료 {len(state.new_ids)}개가 새 재료 봉투로 돌아갔어요.")
-    state.new_ids = []
+    undone = 0
+    for item in all_items:
+        if item.pop("new", None):
+            item["zone"] = None
+            undone += 1
+    store.save_items(all_items)
+    if undone:
+        state.flash = (True, f"넣기를 취소했어요. 재료 {undone}개가 새 재료 봉투로 돌아갔어요.")
 
 
 def on_close_door():
@@ -571,7 +578,7 @@ with st.container(key="fridge_stage"):
         # 다른 페이지에서 냉장고(문 열린 상태)로 들어왔을 때만 문 열림 효과
         animate=state.get("page_changed", False) and not DOOR_CLOSED, mobile=MOBILE,
         hide_outside=DOOR_CLOSED,  # 문이 닫히면(장보기) 냉장고 밖(실온)은 안 보이게
-        new_ids=state.new_ids, on_autoplace=on_autoplace, on_done=on_done, on_undo=on_undo,
+        new_ids=new_ids, on_autoplace=on_autoplace, on_done=on_done, on_undo=on_undo,
     )
     door = st.container(key="fridge_door", gap="small")
 shopping_panel.render(head, door, MOBILE, show_head=DOOR_CLOSED)
