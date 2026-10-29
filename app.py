@@ -10,6 +10,7 @@
 
 import streamlit as st
 
+import auth
 import sample_data
 import shopping_store
 import ui
@@ -23,6 +24,9 @@ st.set_page_config(
 # 앱 전체 스타일(색·글꼴은 .streamlit/config.toml) + 다크 모드·화면 폭 감시
 ui.apply_style(mobile)
 ui.watch()
+
+# 로그인하지 않았으면 로그인 화면만 보여 주고 멈춘다. 로그인하면 그 사람 냉장고만 읽고 쓴다. (auth.py, storage.py)
+user = auth.require_login()
 
 # 아직 안 산 항목 개수 (휴대폰 아래 메뉴의 "장보기 3"에 쓴다)
 count = shopping_store.unchecked_count(shopping_store.load())
@@ -60,16 +64,21 @@ if mobile:
 # ---------------------------------------------------------------
 def reset_to_sample():
     sample_data.load_sample()
-    # 입력칸·열린 창·추천 결과 같은 화면 상태도 모두 지워서 처음 상태로 만든다.
+    # 입력칸·열린 창·추천 결과 같은 화면 상태도 모두 지워서 처음 상태로 만든다. (로그인은 그대로)
+    login = auth.keep_keys()
     for key in list(st.session_state.keys()):
         del st.session_state[key]
+    st.session_state.update(login)
     st.session_state.flash = (True, "🧪 테스트 데이터를 넣었어요.")
 
 
 with st.sidebar:
     st.divider()
+    col_user, col_out = st.columns([3, 2], vertical_alignment="center")
+    col_user.markdown(f"👤 **{user}**")
+    col_out.button("로그아웃", key="log_out", type="tertiary", on_click=auth.log_out)
     if st.session_state.get("sample_ask"):
-        st.warning("지금 데이터가 지워져요. 테스트 데이터로 바꿀까요?")
+        st.warning("내 냉장고 데이터가 지워져요. 테스트 데이터로 바꿀까요?")
         col_yes, col_no = st.columns(2)
         col_yes.button("바꾸기", key="sample_yes", type="primary", on_click=reset_to_sample)
         col_no.button("취소", key="sample_no", on_click=lambda: st.session_state.pop("sample_ask", None))

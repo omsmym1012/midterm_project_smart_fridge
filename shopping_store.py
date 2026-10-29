@@ -17,13 +17,12 @@
            다시 추천하지 않도록 기억해 둔다.
 """
 
-import json
-import os
 import uuid
 from datetime import datetime
 from pathlib import Path
 
 import fridge_store
+import storage
 import usage_log
 
 # 데이터 파일 위치 (.gitignore의 data/*.json에 포함되어 커밋되지 않음)
@@ -42,24 +41,13 @@ SOURCE_DISCARDED = "discarded"  # 폐기한 재료
 # ---------------------------------------------------------------
 def load():
     """장보기 데이터를 읽어 온다. 파일이 없거나 깨졌으면 빈 데이터로 시작한다."""
-    empty = {"items": [], "handled": []}
-    if not DATA_FILE.exists():
-        return empty
-    try:
-        with open(DATA_FILE, encoding="utf-8") as f:
-            data = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        return empty
+    data = storage.load("shopping", DATA_FILE, {"items": [], "handled": []})
     return {"items": data.get("items", []), "handled": data.get("handled", [])}
 
 
 def save(data):
-    """임시 파일에 먼저 쓴 뒤 바꿔치기해서, 저장 도중 꺼져도 파일이 망가지지 않게 한다."""
-    DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp_file = DATA_FILE.with_suffix(".tmp")
-    with open(tmp_file, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_file, DATA_FILE)
+    """로그인한 사용자의 장보기 데이터를 저장한다. (storage.py)"""
+    storage.save("shopping", DATA_FILE, data)
 
 
 # ---------------------------------------------------------------

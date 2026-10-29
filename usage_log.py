@@ -15,10 +15,10 @@
 - 잘못 넣은 재료를 지우거나 고치는 것은 기록하지 않는다.
 """
 
-import json
-import os
 from datetime import date
 from pathlib import Path
+
+import storage
 
 LOG_FILE = Path(__file__).parent / "data" / "usage_log.json"
 
@@ -27,22 +27,12 @@ MIN_DISCARDS = 2     # 이 중 몇 번 이상 버렸으면 추천할지
 
 
 def load():
-    if not LOG_FILE.exists():
-        return []
-    try:
-        with open(LOG_FILE, encoding="utf-8") as f:
-            return json.load(f).get("events", [])
-    except (json.JSONDecodeError, OSError):
-        return []
+    """로그인한 사용자의 기록 (storage.py)"""
+    return storage.load("usage_log", LOG_FILE, {"events": []}).get("events", [])
 
 
 def save(events):
-    """임시 파일에 쓴 뒤 바꿔치기 (저장 도중 꺼져도 파일이 망가지지 않게)"""
-    LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp_file = LOG_FILE.with_suffix(".tmp")
-    with open(tmp_file, "w", encoding="utf-8") as f:
-        json.dump({"events": events}, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_file, LOG_FILE)
+    storage.save("usage_log", LOG_FILE, {"events": events})
 
 
 def log(kind, name, unit, quantity, expiry=None, when=None):

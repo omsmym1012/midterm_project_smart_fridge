@@ -19,6 +19,9 @@
   - `recipe_store.py`: 요리 추천 (식품안전나라 레시피 → 부족하면 AI, 레시피는 `data/recipes.json`)
   - `ai_client.py`: OpenRouter 호출 공통 (무료 모델 차례로 시도, 사진을 읽는 모델 목록 따로)
   - `sample_data.py`: 테스트 데이터 (사이드바 "🧪 테스트 데이터 넣기")
+  - `auth.py`: 로그인 화면(닉네임+비밀번호), 새로고침해도 로그인 유지(브라우저 저장소의 토큰)
+  - `storage.py`: 사용자별 저장(냉장고·장보기·사용 기록)과 계정. Supabase 키(`SUPABASE_URL`, `SUPABASE_KEY`=service_role)가 있으면 Supabase, 없으면 `data/users/닉네임/` 파일
+  - `supabase_setup.sql`: Supabase 테이블 만드는 SQL (SQL Editor에서 한 번 실행)
 - 배포 예정: Streamlit Community Cloud
 
 ## 단계별 범위
@@ -43,7 +46,7 @@
   - 다크 모드 만들기
   - 모바일 전용 화면 만들기
   - 같은 칸 안에서 재료 순서를 끌어서 바꾸기
-- 5단계: 사용자별 개인 냉장고 — 지금은 주소에 접속한 모든 사람이 같은 냉장고·장보기 정보를 공유하므로, 사람마다 따로 쓰도록 분리하기
+- 5단계: 사용자별 개인 냉장고 — 닉네임+비밀번호로 로그인, 사람마다 냉장고·장보기·사용 기록을 따로 Supabase에 저장 (다시 배포해도 남음)
   - 팝업에 적던 내용도 새로고침 후 그대로 남기기 (지금은 팝업만 다시 열리고 입력칸은 비어 있음)
 
 ## 과제 규칙

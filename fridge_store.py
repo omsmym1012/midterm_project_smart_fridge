@@ -18,15 +18,14 @@
     }
 """
 
-import json
-import os
 import uuid
 from datetime import date, datetime
 from pathlib import Path
 
+import storage  # 사용자별 저장 (Supabase 또는 파일)
 import usage_log  # 산·쓴·버린 기록 (구매 적정량 추천에 씀)
 
-# 데이터 파일 위치: 프로젝트 폴더 안의 data/fridge.json
+# 로그인하지 않았을 때(테스트 스크립트) 쓰는 파일: 프로젝트 폴더 안의 data/fridge.json
 # (.gitignore에 data/*.json이 있어서 개인 기록이 커밋되지 않는다)
 DATA_FILE = Path(__file__).parent / "data" / "fridge.json"
 
@@ -46,15 +45,8 @@ _FAR_FUTURE = "9999-12-31"
 # 파일 저장 / 불러오기
 # ---------------------------------------------------------------
 def load_items():
-    """JSON 파일에서 재료 목록을 읽어 온다. 파일이 없으면 빈 목록을 돌려준다."""
-    if not DATA_FILE.exists():
-        return []
-    try:
-        with open(DATA_FILE, encoding="utf-8") as f:
-            items = json.load(f).get("items", [])
-    except (json.JSONDecodeError, OSError):
-        # 파일이 깨졌거나 읽을 수 없으면 앱이 멈추지 않도록 빈 목록으로 시작한다.
-        return []
+    """로그인한 사용자의 재료 목록을 읽어 온다. 없거나 파일이 깨졌으면 빈 목록 (storage.py)"""
+    items = storage.load("fridge", DATA_FILE, {"items": []}).get("items", [])
     return [_upgrade_old_item(item) for item in items]
 
 
@@ -68,17 +60,8 @@ def _upgrade_old_item(item):
 
 
 def save_items(items):
-    """재료 목록을 JSON 파일에 저장한다.
-
-    임시 파일에 먼저 쓴 뒤 바꿔치기해서, 저장 도중 앱이 꺼져도
-    기존 파일이 반쯤 쓰인 채로 망가지지 않게 한다.
-    """
-    DATA_FILE.parent.mkdir(parents=True, exist_ok=True)
-    tmp_file = DATA_FILE.with_suffix(".tmp")
-    with open(tmp_file, "w", encoding="utf-8") as f:
-        # ensure_ascii=False: 한글을 \uXXXX가 아닌 그대로 저장해서 파일을 열어 봐도 읽을 수 있게 한다.
-        json.dump({"items": items}, f, ensure_ascii=False, indent=2)
-    os.replace(tmp_file, DATA_FILE)
+    """로그인한 사용자의 재료 목록을 저장한다. (Supabase 또는 사용자별 파일, storage.py)"""
+    storage.save("fridge", DATA_FILE, {"items": items})
 
 
 # ---------------------------------------------------------------
