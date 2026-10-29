@@ -315,24 +315,6 @@ def render(head, door, mobile, show_head):
             # ---------------------------------------------------------------
             # 탭 이름이 이미 '장바구니'라서 따로 제목을 달지 않는다.
 
-            # 마트에서 이 재료를 찾을 수 있는 코너 (재료 종류로 정한다)
-            AISLE_BY_CATEGORY = {
-                "채소": "채소 코너", "과일": "과일 코너", "육류": "정육 코너", "해산물": "수산 코너",
-                "유제품·계란": "유제품·계란 코너", "곡류·면": "쌀·면 코너", "양념·소스": "양념·소스 코너",
-                "가공·냉동식품": "가공식품 코너", "밀키트·간편식": "간편식 코너", "음료": "음료 코너",
-            }
-
-
-            def aisle(name):
-                """재료 이름으로 마트 코너를 알려 준다. 냉동 보관 재료는 냉동식품 코너, 모르면 빈 글자."""
-                if "빵" in name:  # 식빵·모닝빵 등은 종류가 곡류라도 빵 코너에 있다.
-                    return "빵 코너"
-                info = known_info(name)
-                if info["category"] == "가공·냉동식품" and info["storage"] == "냉동":
-                    return "냉동식품 코너"
-                return AISLE_BY_CATEGORY.get(info["category"], "")
-
-
             def on_check_change(item_id):
                 """체크박스를 누르면 바로 저장한다."""
                 checked = st.session_state[f"shop_chk_{item_id}"]
@@ -365,7 +347,7 @@ def render(head, door, mobile, show_head):
                 [class*="st-key-shop_chk_"] label > div:first-of-type svg {
                     width: 1.3rem; height: 1.3rem;
                 }
-                /* [쿠팡 ↗] [🌐 담기]: 작은 글씨로 한 줄에 */
+                /* [🌐 담기]: 작은 글씨 */
                 [class*="st-key-shop_web_"] { flex-wrap: nowrap; align-items: center; }
                 [class*="st-key-shop_web_"] p { font-size: 0.8rem; white-space: nowrap; margin: 0; }
                 [class*="st-key-shop_web_"] button { min-height: 0; padding: 0; }
@@ -378,15 +360,15 @@ def render(head, door, mobile, show_head):
             for item in todo + got:
                 if got and item is got[0] and todo:
                     st.caption("✔ 산 재료")  # 안 산 재료와 산 재료 사이 구분
-                # 한 줄: 이름 | 마트 코너 | 수량 입력칸 | 단위(고정) | 체크박스(산 재료면 v) | 삭제
+                # 한 줄: 이름 | [🌐 담기] | 수량 입력칸 | 단위(고정) | 체크박스(산 재료면 v) | 삭제
                 if MOBILE:
-                    # 휴대폰: 이름 아래에 코너 | 수량 | 단위 | 체크 | 🗑
+                    # 휴대폰: 이름 아래에 [🌐 담기] | 수량 | 단위 | 체크 | 🗑
                     col_name, col_qty, col_unit, col_chk, col_del = st.columns(
                         [2.3, 1.3, 0.6, 0.55, 0.6], vertical_alignment="center"
                     )
-                    col_aisle = col_name
+                    col_web = col_name
                 else:
-                    col_name, col_aisle, col_qty, col_unit, col_chk, col_del = st.columns(
+                    col_name, col_web, col_qty, col_unit, col_chk, col_del = st.columns(
                         [1.4, 1.4, 1.6, 0.7, 0.5, 1], vertical_alignment="center"
                     )
                 # 산 재료는 이름에 줄을 긋고 흐리게 보여 준다. 인터넷으로 살 재료는 이름 앞에 🌐
@@ -395,14 +377,9 @@ def render(head, door, mobile, show_head):
                     col_name.markdown(f":gray[~~{web}{item['name']}~~]")
                 else:
                     col_name.markdown(f"{web}**{item['name']}**")
-                # 마트 코너를 작은 글씨로 보여 준다.
-                where = aisle(item["name"])
-                if where:
-                    col_aisle.caption(f"📍 {where}")
                 if not item["checked"]:
-                    # [쿠팡 ↗]: 쿠팡 검색(낮은 가격순)을 새 창으로 / [🌐 담기·빼기]: 인터넷 구매 목록에 넣기·빼기
-                    with col_aisle.container(horizontal=True, gap="small", key=f"shop_web_{item['id']}"):
-                        st.markdown(f"[쿠팡 ↗]({shop.coupang_url(item['name'])})", width="content")
+                    # [🌐 담기·빼기]: 인터넷 구매 목록에 넣기·빼기
+                    with col_web.container(horizontal=True, gap="small", key=f"shop_web_{item['id']}"):
                         st.button(
                             "🌐 빼기" if item.get("online") else "🌐 담기", key=f"shop_online_{item['id']}",
                             type="tertiary", on_click=shop.set_online, args=(data, item["id"], not item.get("online")),
@@ -439,7 +416,7 @@ def render(head, door, mobile, show_head):
                 with st.container(border=True, key="shop_web_list"):
                     for item in web_items:
                         qty = fridge_store.format_quantity(item["quantity"], item["unit"])
-                        st.markdown(f"{item['name']} {qty} · [쿠팡 ↗]({shop.coupang_url(item['name'])})")
+                        st.markdown(f"{item['name']} {qty}")
 
 
             # ---------------------------------------------------------------
