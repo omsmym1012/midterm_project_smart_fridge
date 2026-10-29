@@ -196,7 +196,7 @@ CSS = """
 /* 자동으로 넣은 재료: 노란 형광펜 ([완료]를 누르면 사라진다) */
 .fb-chip.fb-new { background: color-mix(in srgb, #FFD43B 30%, var(--fb-chip)); }
 
-.fb-zone-title { font-size: 0.75rem; color: var(--fb-sub); margin-bottom: 6px; }
+.fb-zone-title { font-size: 0.75rem; color: var(--fb-sub); margin-bottom: 6px; cursor: pointer; user-select: none; }
 .fb-list { display: flex; flex-direction: column; gap: 5px; min-height: 26px; }
 .fb-list:empty::after { content: attr(data-empty); font-size: 0.72rem; opacity: 0.55; }
 
@@ -307,7 +307,13 @@ export default function (component) {
         const box = el("div", "fb-zone " + (extraClass || ""));
         box.dataset.zone = id;
         const list = el("div", "fb-list");
-        box.append(el("div", "fb-zone-title", title), list);
+        const head = el("div", "fb-zone-title", title);
+        if (id !== "tray") {
+            // 칸 이름을 더블클릭하면 봉투의 재료 중 이 칸이 추천 칸인 것만 넣는다.
+            head.title = "더블클릭: 이 칸이 추천 칸인 새 재료 넣기";
+            head.addEventListener("dblclick", () => setTriggerValue("fill", { zone: id, at: Date.now() }));
+        }
+        box.append(head, list);
         lists[id] = list;
         zoneBoxes.push(box);
         return box;
@@ -518,7 +524,8 @@ def _board_data(items):
 
 
 def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mobile=False, on_close=None,
-                 hide_outside=False, new_ids=(), on_autoplace=None, on_done=None, on_undo=None):
+                 hide_outside=False, new_ids=(), on_autoplace=None, on_done=None, on_undo=None,
+                 on_fill=None):
     """냉장고 칸 화면을 그린다.
 
     재료를 다른 칸에 놓으면 on_move, 누르면 on_toggle이 화면을 다시 그리기 전에 먼저 실행된다.
@@ -531,6 +538,7 @@ def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mob
     hide_outside=True: 냉장고 밖(조리대)을 감춘다 (문이 닫힌 장보기 화면)
     new_ids: 자동으로 넣어서 노란 형광펜으로 표시할 재료 id들
     on_autoplace: 봉투의 [추천 칸에 모두 넣기]를 눌렀을 때, on_done: [완료], on_undo: [취소]를 눌렀을 때 실행
+    on_fill: 칸 이름을 더블클릭했을 때 실행 (st.session_state[key]["fill"]["zone"]에 그 칸 id)
     """
     data = _board_data(items)
     data["selected"] = list(selected)
@@ -546,5 +554,5 @@ def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mob
         on_move_change=on_move, on_toggle_change=on_toggle,
         on_close_change=on_close or (lambda: None),
         on_autoplace_change=on_autoplace or (lambda: None), on_done_change=on_done or (lambda: None),
-        on_undo_change=on_undo or (lambda: None),
+        on_undo_change=on_undo or (lambda: None), on_fill_change=on_fill or (lambda: None),
     )

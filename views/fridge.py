@@ -83,6 +83,16 @@ state.setdefault("multi_selected", [])  # 칸 그림에서 고른 재료 id들
 state.setdefault("multi_open", False)   # 고른 재료 사용 팝업이 열려 있는지
 state.setdefault("bulk_rebuy", None)    # 사용·소진·폐기로 없어진 재료들 (장바구니에 담을지 한 번에 묻기)
 
+# 새로고침해도 열려 있던 팝업이 다시 뜨도록 주소 끝 ?popup=add|use|put (고른 재료는 &pick=id,id)에 적어 둔다.
+# 새로고침하면 화면 기억이 비므로, 처음 실행할 때 한 번만 주소를 읽는다. (팝업 안에 적던 내용은 남지 않는다)
+POPUP_FLAGS = {"add": "add_open", "use": "multi_open", "put": "put_ask"}
+if "popup_restored" not in state:
+    state.popup_restored = True
+    if st.query_params.get("pick"):
+        state.multi_selected = st.query_params["pick"].split(",")
+    if st.query_params.get("popup") in POPUP_FLAGS:
+        state[POPUP_FLAGS[st.query_params["popup"]]] = True
+
 
 def close_dialogs():
     """팝업을 닫는다. (팝업 ✕를 눌렀을 때도 실행)"""
@@ -531,20 +541,35 @@ def on_move():
             store.save_items(all_items)
 
 
-def on_autoplace():
-    """봉투의 [추천 칸에 모두 넣기]: 칸이 없는 재료를 모두 추천 칸에 넣고, 넣은 재료를 "새"로 표시해 둔다."""
+def place_from_bag(only_zone=None):
+    """봉투의 재료를 추천 칸에 넣고, 넣은 재료를 "새"로 표시해 둔다. only_zone이 있으면 그 칸이 추천인 재료만."""
     all_items = store.load_items()
     cache = classifier.load_cache()
-    placed = [
-        item for item in store.fridge_items_sorted(all_items)
-        if item.get("zone") not in store.ZONES
-        and store.set_zone(all_items, item["id"], board_recommend(item, cache))
-    ]
+    placed = []
+    for item in store.fridge_items_sorted(all_items):
+        zone = board_recommend(item, cache)
+        if item.get("zone") not in store.ZONES and only_zone in (None, zone) \
+                and store.set_zone(all_items, item["id"], zone):
+            placed.append(item)
     for item in placed:
         item["new"] = True  # [완료]를 누를 때까지 노란색으로 표시
     if placed:
         store.save_items(all_items)
         state.flash = (True, f"추천 칸에 넣었어요: {', '.join(item['name'] for item in placed)}")
+    elif only_zone:
+        state.flash = (False, "새 재료 중에 이 칸이 추천 칸인 재료가 없어요.")
+
+
+def on_autoplace():
+    """봉투의 [추천 칸에 모두 넣기]"""
+    place_from_bag()
+
+
+def on_fill():
+    """칸 이름 더블클릭: 그 칸이 추천 칸인 봉투 재료만 넣는다."""
+    fill = (state.get(BOARD_KEY) or {}).get("fill") or {}
+    if fill.get("zone") in store.ZONES:
+        place_from_bag(fill["zone"])
 
 
 def on_done():
@@ -585,10 +610,20 @@ with st.container(key="fridge_stage"):
         # 다른 페이지에서 냉장고(문 열린 상태)로 들어왔을 때만 문 열림 효과
         animate=state.get("page_changed", False) and not DOOR_CLOSED, mobile=MOBILE,
         hide_outside=DOOR_CLOSED,  # 문이 닫히면(장보기) 냉장고 밖(실온)은 안 보이게
-        new_ids=new_ids, on_autoplace=on_autoplace, on_done=on_done, on_undo=on_undo,
+        new_ids=new_ids, on_autoplace=on_autoplace, on_done=on_done, on_undo=on_undo, on_fill=on_fill,
     )
     door = st.container(key="fridge_door", gap="small")
 shopping_panel.render(head, door, MOBILE, show_head=DOOR_CLOSED)
+
+# 지금 열린 팝업과 고른 재료를 주소에 적는다. (없으면 지운다)
+for param, value in (
+    ("popup", next((name for name, flag in POPUP_FLAGS.items() if state.get(flag)), None)),
+    ("pick", ",".join(state.multi_selected)),
+):
+    if value:
+        st.query_params[param] = value
+    else:
+        st.query_params.pop(param, None)
 
 # 열려 있어야 하는 팝업을 연다. (한 번에 하나만)
 if state.bulk_rebuy:
