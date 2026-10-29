@@ -144,8 +144,8 @@ with tab_ing:
                 st.rerun()
 
 
-        if st.button("🧊 냉장고에서 고르기"):
-            state.recipe_board_open = True
+        # on_click으로 연다: `if st.button(...)`은 팝업 안에서 다시 그린 뒤에도 True로 남아 팝업이 다시 열릴 수 있다.
+        st.button("🧊 냉장고에서 고르기", on_click=lambda: state.update(recipe_board_open=True))
         if state.get("recipe_board_open"):
             board_dialog()
         state.setdefault("recipe_picks", None)
