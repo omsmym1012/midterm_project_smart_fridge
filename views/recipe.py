@@ -11,6 +11,7 @@ import streamlit as st
 import classifier
 import fridge_store
 import recipe_store
+import shopping_panel
 import shopping_store as shop
 import ui
 from fridge_board import fridge_board
@@ -21,9 +22,23 @@ state = st.session_state
 items = fridge_store.load_items()
 fridge = recipe_store.usable_items(items)
 
+# [장바구니로 가기]: 알림은 한 번만 보여서 다음 실행엔 버튼이 없으므로, 누를 때 콜백으로 표시해 두고 여기서 옮긴다.
+if state.pop("recipe_go_cart", False):
+    state.goto_tab = shopping_panel.TAB_CART
+    st.switch_page("views/fridge.py", query_params={"show": "door"})
+
 if "flash" in st.session_state:
     ok, message = st.session_state.pop("flash")
-    (st.success if ok else st.warning)(message)
+    if ok:
+        # 초록 알림 줄: 왼쪽 메시지, 오른쪽 끝 [장바구니로 가기]
+        st.html("""<style>.st-key-recipe_flash { background: rgba(33, 195, 84, 0.12); border-radius: 0.5rem;
+            padding: 0.6rem 0.6rem 0.6rem 1rem; } .st-key-recipe_flash p { margin: 0; }
+            .st-key-recipe_to_cart { margin-left: auto; }  /* 줄이 바뀌어도 오른쪽 끝 */</style>""")
+        with st.container(key="recipe_flash", horizontal=True, vertical_alignment="center"):
+            st.markdown(f":green[{message}]", width="stretch")
+            st.button("🛒 장바구니로 가기", key="recipe_to_cart", on_click=lambda: state.update(recipe_go_cart=True))
+    else:
+        st.warning(message)
 
 def add_missing(names):
     """고른 부족한 재료를 장보기 리스트에 담는다."""
