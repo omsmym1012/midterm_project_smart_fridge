@@ -308,7 +308,7 @@ export default function (component) {
         box.dataset.zone = id;
         const list = el("div", "fb-list");
         const head = el("div", "fb-zone-title", title);
-        if (id !== "tray") {
+        if (id !== "tray" && !data.pickOnly) {
             // 칸 이름을 더블클릭하면 봉투의 재료 중 이 칸이 추천 칸인 것만 넣는다.
             head.title = "더블클릭: 이 칸이 추천 칸인 새 재료 넣기";
             head.addEventListener("dblclick", () => setTriggerValue("fill", { zone: id, at: Date.now() }));
@@ -327,7 +327,7 @@ export default function (component) {
         shelfIds.forEach((id) => shelves.appendChild(makeZone(id, titles[id], id === "crisper" ? "fb-drawer" : "fb-shelf")));
         const door = el("div", "fb-door");
         door.appendChild(makeZone(doorId, titles[doorId]));
-        if (partClass === "fb-fridge-part") {
+        if (partClass === "fb-fridge-part" && !data.pickOnly) {
             // 손잡이를 누르면 Python에 알려서 문을 닫는다. (장보기 화면)
             const grip = el("div", "fb-grip");
             grip.title = "문 닫기 (장보기)";
@@ -382,14 +382,14 @@ export default function (component) {
         btn.addEventListener("click", () => setTriggerValue(trigger, Date.now()));
         return btn;
     }
-    if (newIds.size) {
+    if (newIds.size && !data.pickOnly) {
         tray.insertBefore(el("div", "fb-new-bar", "새로 넣은 재료 " + newIds.size + "개"), lists.tray);
         // [완료]: 표시만 지우기 / [취소]: 방금 넣은 재료를 다시 봉투로
         const row = el("div", "fb-tray-btns");
         row.append(trayButton("완료", "done"), trayButton("취소", "undo", "fb-secondary"));
         tray.insertBefore(row, lists.tray);
     }
-    if (inTray) tray.insertBefore(trayButton("추천 칸에 모두 넣기", "autoplace"), lists.tray);
+    if (inTray && !data.pickOnly) tray.insertBefore(trayButton("추천 칸에 모두 넣기", "autoplace"), lists.tray);
 
     function setRecommend(zoneId, on) {
         zoneBoxes.forEach((box) => box.classList.toggle("fb-recommend", on && box.dataset.zone === zoneId));
@@ -435,6 +435,7 @@ export default function (component) {
         function onMove(e) {
             // 조금이라도 움직였을 때부터 끌기로 본다. (그냥 누른 건 무시)
             if (!ghost) {
+                if (data.pickOnly) return;  // 고르기 전용: 끌어도 옮기지 않고, 손을 떼면 누르기로 본다.
                 if (Math.abs(e.clientX - startX) + Math.abs(e.clientY - startY) < 5) return;
                 ghost = chip.cloneNode(true);
                 ghost.classList.add("fb-ghost");
@@ -525,7 +526,7 @@ def _board_data(items):
 
 def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mobile=False, on_close=None,
                  hide_outside=False, new_ids=(), on_autoplace=None, on_done=None, on_undo=None,
-                 on_fill=None):
+                 on_fill=None, pick_only=False):
     """냉장고 칸 화면을 그린다.
 
     재료를 다른 칸에 놓으면 on_move, 누르면 on_toggle이 화면을 다시 그리기 전에 먼저 실행된다.
@@ -539,6 +540,7 @@ def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mob
     new_ids: 자동으로 넣어서 노란 형광펜으로 표시할 재료 id들
     on_autoplace: 봉투의 [추천 칸에 모두 넣기]를 눌렀을 때, on_done: [완료], on_undo: [취소]를 눌렀을 때 실행
     on_fill: 칸 이름을 더블클릭했을 때 실행 (st.session_state[key]["fill"]["zone"]에 그 칸 id)
+    pick_only=True: 누르기(고르기)만 된다. 끌어 옮기기·봉투 버튼·손잡이·칸 이름 더블클릭은 끈다. (요리 추천에서 재료 고르기)
     """
     data = _board_data(items)
     data["selected"] = list(selected)
@@ -549,6 +551,7 @@ def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mob
     data["trayGap"] = TRAY_GAP
     data["hideOutside"] = hide_outside
     data["newIds"] = list(new_ids)
+    data["pickOnly"] = pick_only
     _board(
         data=data, key=key,
         on_move_change=on_move, on_toggle_change=on_toggle,

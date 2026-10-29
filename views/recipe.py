@@ -12,6 +12,8 @@ import classifier
 import fridge_store
 import recipe_store
 import shopping_store as shop
+import ui
+from fridge_board import fridge_board
 
 st.title("🍳 요리 추천")
 state = st.session_state
@@ -119,6 +121,33 @@ with tab_ing:
             format_func=lambda n: f"{'🟠 ' if n in soon_names else ''}{n} ({dday[n]})",
             placeholder="고르지 않으면 냉장고 재료 전체로 추천해요",
         )
+
+        # [🧊 냉장고에서 고르기]: 냉장고 그림 팝업에서 재료를 눌러 고른다. (위 고르기 칸과 같은 목록을 바꾼다)
+        def on_board_toggle():
+            item_id = (state.get("recipe_board") or {}).get("toggle")
+            name = next((i["name"] for i in items if i["id"] == item_id), None)
+            if name in names:
+                chosen = state.recipe_chosen
+                state.recipe_chosen = [n for n in chosen if n != name] if name in chosen else chosen + [name]
+
+
+        @st.dialog("🧊 냉장고에서 고르기", width="large", on_dismiss=lambda: state.update(recipe_board_open=False))
+        def board_dialog():
+            st.caption("쓰고 싶은 재료를 누르세요. 다시 누르면 풀려요. (기한 지난 재료는 보이지 않아요)")
+            fridge_board(
+                [i for i in items if i["name"] in names], key="recipe_board", on_move=lambda: None,
+                on_toggle=on_board_toggle, mobile=ui.is_mobile(), pick_only=True,
+                selected=[i["id"] for i in items if i["name"] in state.recipe_chosen],
+            )
+            if st.button(f"고르기 완료 ({len(state.recipe_chosen)})", type="primary", width="stretch"):
+                state.recipe_board_open = False
+                st.rerun()
+
+
+        if st.button("🧊 냉장고에서 고르기"):
+            state.recipe_board_open = True
+        if state.get("recipe_board_open"):
+            board_dialog()
         state.setdefault("recipe_picks", None)
         state.setdefault("recipe_notice", None)
         state.setdefault("recipe_seen_ids", [])     # 이미 보여 준 레시피 (다른 요리 보기에서 제외)
