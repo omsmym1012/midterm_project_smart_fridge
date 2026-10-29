@@ -413,7 +413,7 @@ def use_body(chosen, from_selection):
     """재료마다 쓰는 양을 입력하거나 [소진]/[폐기]를 골라 한 번에 적용한다. (여러 개 / 하나 팝업 공통)
 
     - 사용: 쓰는 양만큼 줄인다. (0이면 그대로)
-    - 소진: 남은 양을 모두 다 쓴 것으로
+    - 소진: 쓰는 양 칸을 남은 양 전부로 채운다. (적용하면 다 쓴 것이 된다)
     - 폐기: 유통기한이 지난 묶음만 버린다. (기한 지난 묶음이 있는 재료에만 보인다)
     다 쓰거나 버려서 없어진 재료는 마지막에 장바구니에 담을지 한 번에 묻는다.
     """
@@ -431,7 +431,7 @@ def use_body(chosen, from_selection):
                 f":gray[남은 양 {store.format_quantity(total, item['unit'])}]"
             )
             # 한 줄: [쓰는 양(짧은 칸)] 단위 [소진] [폐기]
-            # 소진·폐기를 고르면 쓰는 양 칸은 잠긴다. 다시 누르면 풀려서 '사용'으로 돌아간다.
+            # [소진]은 쓰는 양을 남은 양 전부로 바꾼다. [폐기]를 고르면 쓰는 양 칸은 잠긴다. (다시 누르면 풀림)
             with st.container(horizontal=True, vertical_alignment="center", gap="small", wrap=MOBILE):  # 휴대폰은 좁으면 [소진][폐기]가 다음 줄로
                 act_key = f"multi_act_{item['id']}"
                 picked_act = state.get(act_key)
@@ -441,15 +441,16 @@ def use_body(chosen, from_selection):
                     label_visibility="collapsed", width=130, disabled=bool(picked_act),  # 130px부터 [−][+]가 보인다
                 )
                 st.markdown(item["unit"], width="content")
-                options = [ACT_EMPTY] + ([ACT_DISCARD] if expired else [])  # 폐기는 기한 지난 재료만
-                act = st.segmented_control(
-                    f"{item['name']} 처리", options, key=act_key, label_visibility="collapsed",
-                ) or ACT_USE
+                st.button(
+                    ACT_EMPTY, key=f"multi_full_{item['id']}", disabled=bool(picked_act),
+                    on_click=lambda key=f"multi_amt_{item['id']}", total=total: state.update({key: float(total)}),
+                )
+                act = (st.segmented_control(
+                    f"{item['name']} 처리", [ACT_DISCARD], key=act_key, label_visibility="collapsed",
+                ) if expired else None) or ACT_USE  # 폐기는 기한 지난 재료만
             if act == ACT_DISCARD:
                 gone_qty = sum(b["quantity"] for b in expired)
                 st.caption(f"기한 지난 {store.format_quantity(gone_qty, item['unit'])}을(를) 버려요.")
-            elif act == ACT_EMPTY:
-                st.caption("남은 양을 모두 다 쓴 것으로 처리해요.")
             if act != ACT_USE:
                 amount = 0.0
             plans[item["id"]] = (item, act, amount, expired)
@@ -460,12 +461,10 @@ def use_body(chosen, from_selection):
             if act == ACT_USE:
                 if amount <= 0:
                     continue
-                store.use_quantity(items, item["id"], amount)
-                done.append(f"{item['name']} {store.format_quantity(amount, item['unit'])} 사용")
-                source = shop.SOURCE_USED
-            elif act == ACT_EMPTY:
-                store.mark_used(items, item["id"])
-                done.append(f"{item['name']} 소진")
+                all_used = amount >= store.total_quantity(item)
+                store.use_quantity(items, item["id"], amount)  # 남은 양을 다 쓰면 '다 씀'이 된다.
+                done.append(f"{item['name']} 소진" if all_used else
+                            f"{item['name']} {store.format_quantity(amount, item['unit'])} 사용")
                 source = shop.SOURCE_USED
             else:
                 store.discard_batches(items, item["id"], [b["id"] for b in expired])
