@@ -91,23 +91,38 @@ def _write_file(data):
 
 
 def fetch_all():
-    """API에서 레시피 전체를 받아 정리된 목록으로 돌려준다."""
+    """API에서 레시피 전체를 받아 정리된 목록으로 돌려준다.
+
+    API가 가끔 일부만 보내 줄 때가 있어서(예: 1,156개 중 160개), 받은 개수가 전체의 90%보다 적으면
+    한 번 더 받고, 그래도 모자라면 저장하지 않도록 RecipeError를 낸다. (덜 받은 목록이 1주일 동안 남지 않게)
+    """
     key = ai_client.get_secret("FOODSAFETY_API_KEY")
     if not key:
         raise RecipeError("식품안전나라 인증키(FOODSAFETY_API_KEY)가 설정되지 않았어요.")
-    recipes, start = [], 1
-    while True:
-        rows, total = _fetch_page(key, start, start + PAGE_SIZE - 1)
-        recipes += [_parse_row(row) for row in rows]
-        start += PAGE_SIZE
-        if not rows or start > total:
+    for _ in range(2):
+        recipes, total = _fetch_rows(key)
+        if len(recipes) >= total * 0.9:
             break
+    else:
+        raise RecipeError("레시피를 다 받지 못했어요. 잠시 후 다시 시도해 주세요.")
     # 이름이나 재료가 비어 있는 레시피는 빼고, 같은 레시피 번호가 두 번 오면 하나만 남긴다.
     unique = {}
     for recipe in recipes:
         if recipe["name"] and recipe["ingredients"]:
             unique.setdefault(recipe["id"] or recipe["name"], recipe)
     return list(unique.values())
+
+
+def _fetch_rows(key):
+    """레시피를 페이지별로 모두 받는다. 반환: (정리된 레시피들, API가 알려 준 전체 개수)"""
+    recipes, start, total = [], 1, 0
+    while True:
+        rows, total = _fetch_page(key, start, start + PAGE_SIZE - 1)
+        recipes += [_parse_row(row) for row in rows]
+        start += PAGE_SIZE
+        if not rows or start > total:
+            break
+    return recipes, total
 
 
 def _fetch_page(key, start, end):
