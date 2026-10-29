@@ -11,6 +11,7 @@
 
 - source: 어디서 왔는지 ("used" 다 쓴 재료 / "expired" 기한 지난 재료 / "soon" 기한 임박 재료 / "manual" 직접 추가 / "recipe" 요리 추천)
 - checked: "샀어요" 체크 여부
+- online: 인터넷으로 살 재료인지 (장바구니에 남겨 두고 🌐 표시, 인터넷 구매 목록에도 보인다. 없으면 False)
 - handled: 추천 목록에서 이미 [담기]나 [안 살래요]를 누른 항목.
            다시 추천하지 않도록 기억해 둔다.
 """
@@ -20,6 +21,7 @@ import os
 import uuid
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import quote
 
 import fridge_store
 
@@ -96,6 +98,19 @@ def set_checked(data, item_id, checked):
         if item["id"] == item_id:
             item["checked"] = checked
     save(data)
+
+
+def set_online(data, item_id, online):
+    """인터넷으로 살 재료인지 표시를 바꾼다."""
+    for item in data["items"]:
+        if item["id"] == item_id:
+            item["online"] = online
+    save(data)
+
+
+def coupang_url(name):
+    """쿠팡에서 이 재료를 낮은 가격순으로 검색한 주소 (쇼핑 검색 API가 없어 검색 화면으로 바로 보낸다)"""
+    return f"https://www.coupang.com/np/search?q={quote(name)}&sorter=salePriceAsc"
 
 
 def set_quantity(data, item_id, quantity):

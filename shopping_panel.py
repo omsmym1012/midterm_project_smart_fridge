@@ -365,6 +365,10 @@ def render(head, door, mobile, show_head):
                 [class*="st-key-shop_chk_"] label > div:first-of-type svg {
                     width: 1.3rem; height: 1.3rem;
                 }
+                /* [쿠팡 ↗] [🌐 담기]: 작은 글씨로 한 줄에 */
+                [class*="st-key-shop_web_"] { flex-wrap: nowrap; align-items: center; }
+                [class*="st-key-shop_web_"] p { font-size: 0.8rem; white-space: nowrap; margin: 0; }
+                [class*="st-key-shop_web_"] button { min-height: 0; padding: 0; }
                 </style>"""
             )
 
@@ -385,15 +389,24 @@ def render(head, door, mobile, show_head):
                     col_name, col_aisle, col_qty, col_unit, col_chk, col_del = st.columns(
                         [1.4, 1.4, 1.6, 0.7, 0.5, 1], vertical_alignment="center"
                     )
-                # 산 재료는 이름에 줄을 긋고 흐리게 보여 준다.
+                # 산 재료는 이름에 줄을 긋고 흐리게 보여 준다. 인터넷으로 살 재료는 이름 앞에 🌐
+                web = "🌐 " if item.get("online") else ""
                 if item["checked"]:
-                    col_name.markdown(f":gray[~~{item['name']}~~]")
+                    col_name.markdown(f":gray[~~{web}{item['name']}~~]")
                 else:
-                    col_name.markdown(f"**{item['name']}**")
+                    col_name.markdown(f"{web}**{item['name']}**")
                 # 마트 코너를 작은 글씨로 보여 준다.
                 where = aisle(item["name"])
                 if where:
                     col_aisle.caption(f"📍 {where}")
+                if not item["checked"]:
+                    # [쿠팡 ↗]: 쿠팡 검색(낮은 가격순)을 새 창으로 / [🌐 담기·빼기]: 인터넷 구매 목록에 넣기·빼기
+                    with col_aisle.container(horizontal=True, gap="small", key=f"shop_web_{item['id']}"):
+                        st.markdown(f"[쿠팡 ↗]({shop.coupang_url(item['name'])})", width="content")
+                        st.button(
+                            "🌐 빼기" if item.get("online") else "🌐 담기", key=f"shop_online_{item['id']}",
+                            type="tertiary", on_click=shop.set_online, args=(data, item["id"], not item.get("online")),
+                        )
                 col_qty.number_input(
                     f"{item['name']} 수량", min_value=0.1, value=float(item["quantity"]), step=1.0, format="%g",
                     key=f"shop_qty_{item['id']}", on_change=on_qty_change, args=(item["id"],),
@@ -413,6 +426,18 @@ def render(head, door, mobile, show_head):
                 if col_del.button(delete_label, key=f"shop_del_{item['id']}", help="삭제"):
                     shop.remove_items(data, [item["id"]])
                     finish(True, f"'{item['name']}'을(를) 장바구니에서 뺐어요.")
+
+
+            # ---------------------------------------------------------------
+            # 🌐 인터넷 구매 목록: [🌐 인터넷으로]를 누른 재료 (장바구니에도 그대로 남아 있다)
+            # ---------------------------------------------------------------
+            web_items = [item for item in todo if item.get("online")]
+            if web_items:
+                st.markdown(f"**🌐 인터넷 구매 ({len(web_items)})**")
+                with st.container(border=True, key="shop_web_list"):
+                    for item in web_items:
+                        qty = fridge_store.format_quantity(item["quantity"], item["unit"])
+                        st.markdown(f"{item['name']} {qty} · [쿠팡 ↗]({shop.coupang_url(item['name'])})")
 
 
             # ---------------------------------------------------------------
