@@ -528,17 +528,23 @@ def _board_data(items):
     cache = classifier.load_cache()  # 재료마다 파일을 읽지 않도록 한 번만 읽는다.
     data_items = []
     for item in store.fridge_items_sorted(items):
-        first = store.earliest_batch(item)
-        data_items.append(
-            {
-                "id": item["id"],
-                "name": f"{item['name']} {store.format_quantity(store.total_quantity(item), item['unit'])}",
-                "meta": store.d_day_label(first["expiry"]).replace(" 지남", ""),
-                "status": store.expiry_status(first["expiry"]),
-                "zone": item.get("zone"),
-                "recommend": recommend(item, cache),
-            }
-        )
+        # 기한 지난 묶음과 남은 묶음이 섞여 있으면 카드를 두 장으로 나눠 보여 준다. (예: 우유 1팩 D+2 / 우유 1팩 D-5)
+        # 두 카드는 같은 재료 id라서 고르기·옮기기·사용은 재료 단위로 함께 된다.
+        expired = store.expired_batches(item)
+        rest = [b for b in item["batches"] if b not in expired]
+        parts = [expired, rest] if expired and rest else [item["batches"]]
+        for batches in parts:
+            first = store.earliest_batch({"batches": batches})
+            data_items.append(
+                {
+                    "id": item["id"],
+                    "name": f"{item['name']} {store.format_quantity(sum(b['quantity'] for b in batches), item['unit'])}",
+                    "meta": store.d_day_label(first["expiry"]).replace(" 지남", ""),
+                    "status": store.expiry_status(first["expiry"]),
+                    "zone": item.get("zone"),
+                    "recommend": recommend(item, cache),
+                }
+            )
     return {"zones": store.ZONES, "items": data_items}
 
 
