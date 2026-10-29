@@ -13,6 +13,7 @@ from datetime import date, datetime, timedelta
 import classifier
 import fridge_store
 import shopping_store
+import usage_log
 
 # 냉장고 재료: (이름, 단위, [(오늘부터 며칠 뒤 또는 None=기한 없음, 수량), ...], 칸 또는 None=새 재료)
 FRIDGE = [
@@ -39,12 +40,42 @@ USED = [
     ("요거트", "개", 3),
 ]
 
+# 구매 기록 (구매 적정량 추천 테스트): (이름, 단위, 한 번에 산 양, 유통기한 일수, 하루 쓰는 양, 매번 버린 양)
+# 오늘 기준 30·20·10일 전처럼 '유통기한 일수'마다 3번 산 것으로 만든다.
+#   계란: 30알 사서 하루 1알, 매번 10알 버림 → 20알 추천
+#   우유: 4팩 사서 5일에 1팩, 매번 2팩 버림 → 2팩 추천
+#   두부: 1모 사서 다 씀(버린 적 없음) → 추천 없음
+HISTORY = [
+    ("계란", "개", 30, 20, 1, 10),
+    ("우유", "팩", 4, 10, 0.2, 2),
+    ("두부", "모", 1, 7, 1 / 7, 0),
+]
+
 # 장보기 리스트: (이름, 수량, 단위, 샀어요 체크 여부)
 SHOPPING = [
     ("라면", 5, "개", False),
     ("바나나", 1, "송이", False),
     ("식빵", 1, "봉지", True),    # 체크해 두어서 '냉장고 넣기'를 바로 테스트할 수 있다
+    ("계란", 30, "개", False),    # 구매 기록 때문에 20개로 줄어 담기고 이유가 보인다
 ]
+
+
+def _history_events():
+    """HISTORY로 산·쓴·버린 기록을 만든다."""
+    today = date.today()
+    events = []
+    for name, unit, bought, shelf, per_day, wasted in HISTORY:
+        for round_no in range(3, 0, -1):
+            day = today - timedelta(days=shelf * round_no)
+            events.append({"kind": "buy", "name": name, "unit": unit, "quantity": bought,
+                           "date": day.isoformat(), "expiry": (day + timedelta(days=shelf)).isoformat()})
+            for d in range(shelf):
+                events.append({"kind": "use", "name": name, "unit": unit, "quantity": round(per_day, 3),
+                               "date": (day + timedelta(days=d)).isoformat()})
+            if wasted:
+                events.append({"kind": "discard", "name": name, "unit": unit, "quantity": wasted,
+                               "date": (day + timedelta(days=shelf)).isoformat()})
+    return events
 
 
 def _item(name, unit, batches, zone=None, status=fridge_store.STATUS_IN_FRIDGE):
@@ -73,13 +104,14 @@ def _item(name, unit, batches, zone=None, status=fridge_store.STATUS_IN_FRIDGE):
 
 
 def load_sample():
-    """지금 데이터를 지우고 테스트 데이터로 바꾼다. (냉장고·다 쓴 기록·장보기 전부)"""
+    """지금 데이터를 지우고 테스트 데이터로 바꾼다. (냉장고·다 쓴 기록·구매 기록·장보기 전부)"""
     items = [_item(name, unit, batches, zone) for name, unit, batches, zone in FRIDGE]
     for name, unit, days_ago in USED:
         item = _item(name, unit, [], status=fridge_store.STATUS_USED)
         item["used_at"] = (datetime.now() - timedelta(days=days_ago)).isoformat(timespec="seconds")
         items.append(item)
     fridge_store.save_items(items)
+    usage_log.save(_history_events())  # 장바구니보다 먼저: 담을 때 적정량 추천에 쓰인다.
 
     shopping = {"items": [], "handled": []}
     for name, quantity, unit, checked in SHOPPING:

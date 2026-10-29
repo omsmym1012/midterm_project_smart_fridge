@@ -426,6 +426,8 @@ def render(head, door, mobile, show_head):
                 if col_del.button(delete_label, key=f"shop_del_{item['id']}", help="삭제"):
                     shop.remove_items(data, [item["id"]])
                     finish(True, f"'{item['name']}'을(를) 장바구니에서 뺐어요.")
+                if item.get("advice") and not item["checked"]:
+                    st.caption(f"🧮 {item['advice']}")  # 구매 적정량 추천 이유 (줄 아래에 한 줄로)
 
 
             # ---------------------------------------------------------------

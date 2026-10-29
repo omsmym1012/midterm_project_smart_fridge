@@ -14,6 +14,7 @@
   - `fridge_store.py`: 냉장고 데이터 저장/불러오기 (`data/fridge.json`)
   - `fridge_board.py`: 냉장고 칸 드래그 앤 드롭 화면 (`st.components.v2`, 실제 냉장고 모양)
   - `shopping_store.py`: 장보기 데이터 저장/불러오기, 추천 후보 (`data/shopping.json`)
+  - `usage_log.py`: 산·쓴·버린 기록과 구매 적정량 추천 (`data/usage_log.json`)
   - `classifier.py`: 재료 분류·추천 단위 (목록 → AI, 결과는 `data/classify_cache.json`)
   - `recipe_store.py`: 요리 추천 (식품안전나라 레시피 → 부족하면 AI, 레시피는 `data/recipes.json`)
   - `ai_client.py`: OpenRouter 호출 공통 (무료 모델 차례로 시도, 사진을 읽는 모델 목록 따로)
@@ -33,7 +34,7 @@
 - **2단계:** 영수증 사진 인식 → 사용자가 확인·수정 후 냉장고에 추가
 - **3단계:** 서로 다른 두 기능
   - 최저가 비교: 장바구니 재료의 인터넷 최저가를 네이버 쇼핑 검색 API로 가져와 보여 주고, 인터넷으로 살 재료는 장바구니에서 빼기 (마트 가격·내 구매 기록과 비교하지 않음, 키는 `.env`의 `NAVER_CLIENT_ID`·`NAVER_CLIENT_SECRET`)
-  - 구매 주기 추천: 재료를 사는 주기를 보고 살 때가 된 재료를 추천
+  - 구매 적정량 추천: 사고·쓰고·버린 기록으로 (하루 사용량 × 보통 유통기한)을 계산해, 최근 구매 중 2번 이상 버린 재료를 장바구니에 넣을 때 수량을 줄여 추천 (예: 계란 30알 사서 10알씩 버림 → 20알)
 - 4단계: UI,UX 디자인하기
   - 다크 모드 만들기
   - 모바일 전용 화면 만들기

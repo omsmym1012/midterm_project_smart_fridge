@@ -11,6 +11,7 @@
 
 - source: 어디서 왔는지 ("used" 다 쓴 재료 / "expired" 기한 지난 재료 / "soon" 기한 임박 재료 / "manual" 직접 추가 / "recipe" 요리 추천)
 - checked: "샀어요" 체크 여부
+- advice: 구매 적정량 추천 이유 한 줄 (자주 버린 재료면 수량을 추천값으로 넣고 이유를 남긴다. 없으면 없음)
 - online: 인터넷으로 살 재료인지 (장바구니에 남겨 두고 🌐 표시, 인터넷 구매 목록에도 보인다. 없으면 False)
 - handled: 추천 목록에서 이미 [담기]나 [안 살래요]를 누른 항목.
            다시 추천하지 않도록 기억해 둔다.
@@ -24,6 +25,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 import fridge_store
+import usage_log
 
 # 데이터 파일 위치 (.gitignore의 data/*.json에 포함되어 커밋되지 않음)
 DATA_FILE = Path(__file__).parent / "data" / "shopping.json"
@@ -74,9 +76,15 @@ def find_by_name(data, name):
 
 
 def add_item(data, name, quantity, unit, source=SOURCE_MANUAL):
-    """장보기 항목을 추가한다. 같은 이름이 이미 있으면 추가하지 않고 알려 준다."""
+    """장보기 항목을 추가한다. 같은 이름이 이미 있으면 추가하지 않고 알려 준다.
+
+    자주 버린 재료면 수량을 적정량 추천값으로 바꿔 넣고 이유(advice)를 남긴다. (usage_log.advice)
+    """
     if find_by_name(data, name):
         return False, f"'{name}'은(는) 이미 장바구니에 있어요."
+    tip = usage_log.advice(name, unit)
+    if tip:
+        quantity = tip["quantity"]
     data["items"].append(
         {
             "id": uuid.uuid4().hex,
@@ -86,9 +94,12 @@ def add_item(data, name, quantity, unit, source=SOURCE_MANUAL):
             "source": source,
             "checked": False,
             "added_at": datetime.now().isoformat(timespec="seconds"),
+            **({"advice": tip["text"]} if tip else {}),
         }
     )
     save(data)
+    if tip:
+        return True, f"'{name}'을(를) {fridge_store.format_quantity(quantity, unit)} 담았어요. (자주 버려서 적정량으로 줄였어요)"
     return True, f"'{name}'을(를) 장바구니에 담았어요."
 
 

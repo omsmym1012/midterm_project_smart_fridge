@@ -24,6 +24,8 @@ import uuid
 from datetime import date, datetime
 from pathlib import Path
 
+import usage_log  # 산·쓴·버린 기록 (구매 적정량 추천에 씀)
+
 # 데이터 파일 위치: 프로젝트 폴더 안의 data/fridge.json
 # (.gitignore에 data/*.json이 있어서 개인 기록이 커밋되지 않는다)
 DATA_FILE = Path(__file__).parent / "data" / "fridge.json"
@@ -212,6 +214,9 @@ def add_item(items, name, expiry, quantity, unit, classification=None, allow_new
     """
     expiry_str = expiry.isoformat() if expiry else None
     same_unit = find_in_fridge_by_name(items, name, unit=unit)
+    other_units = [item["unit"] for item in find_all_by_name(items, name)]
+    if same_unit or not other_units or allow_new_unit:
+        usage_log.log("buy", name, unit, quantity, expiry_str)
 
     if same_unit:
         # 이름·단위가 같으면 기존 줄에 합친다.
@@ -223,7 +228,6 @@ def add_item(items, name, expiry, quantity, unit, classification=None, allow_new
         save_items(items)
         return True, f"'{same_unit['name']}'에 {format_quantity(quantity, unit)}을(를) 더했어요."
 
-    other_units = [item["unit"] for item in find_all_by_name(items, name)]
     if other_units and not allow_new_unit:
         # 같은 이름이 다른 단위로만 있으면 합칠 수 없다. 사용자 확인 없이는 추가하지 않는다.
         return False, (
@@ -254,6 +258,7 @@ def use_quantity(items, item_id, amount):
     total = total_quantity(item)
     if amount > total:
         return False, f"남은 양({format_quantity(total, item['unit'])})보다 많이 쓸 수 없어요."
+    usage_log.log("use", item["name"], item["unit"], amount)
 
     remaining = amount
     for batch in sorted(item["batches"], key=_expiry_key):
@@ -279,6 +284,7 @@ def use_quantity(items, item_id, amount):
 def mark_used(items, item_id):
     """재료 전체를 "다 씀" 상태로 바꾼다. (나중에 장보기 리스트에서 사용)"""
     item = _find(items, item_id)
+    usage_log.log("use", item["name"], item["unit"], total_quantity(item))  # 남은 양을 다 썼다 (폐기면 이미 비어 있음)
     item["status"] = STATUS_USED
     item["used_at"] = _now()
     item["batches"] = []  # 남은 양이 없으므로 묶음을 비운다.
@@ -336,6 +342,8 @@ def discard_batches(items, item_id, batch_ids):
     반환: (성공 여부, 메시지)
     """
     item = _find(items, item_id)
+    thrown = sum(batch["quantity"] for batch in item["batches"] if batch["id"] in batch_ids)
+    usage_log.log("discard", item["name"], item["unit"], thrown)
     item["batches"] = [batch for batch in item["batches"] if batch["id"] not in batch_ids]
     if not item["batches"]:
         mark_used(items, item_id)
