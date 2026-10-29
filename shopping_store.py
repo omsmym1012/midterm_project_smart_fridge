@@ -121,7 +121,8 @@ def set_online(data, item_id, online):
 
 def coupang_url(name):
     """쿠팡에서 이 재료를 낮은 가격순으로 검색한 주소 (쇼핑 검색 API가 없어 검색 화면으로 바로 보낸다)"""
-    return f"https://www.coupang.com/np/search?q={quote(name)}&sorter=salePriceAsc"
+    # 쿠팡 검색창이 만드는 주소와 같은 모양으로 (q·sorter만 있으면 쿠팡 보안이 막는다. traceId는 매번 바뀌는 값이라 뺀다)
+    return f"https://www.coupang.com/np/search?component=&q={quote(name)}&channel=user&sorter=salePriceAsc"
 
 
 def set_quantity(data, item_id, quantity):
