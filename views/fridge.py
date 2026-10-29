@@ -31,10 +31,12 @@ MOBILE = ui.is_mobile()  # 휴대폰 화면이면 버튼·냉장고 그림 배�
 # ---------------------------------------------------------------
 VIEW_FRIDGE, VIEW_DOOR = "fridge", "door"
 st.session_state.setdefault("home_view", VIEW_FRIDGE)
-# 휴대폰 아래 메뉴는 주소 끝 ?show=fridge|door 로 어느 쪽을 볼지 알려 준다.
-if st.query_params.get("show") in (VIEW_FRIDGE, VIEW_DOOR):
-    st.session_state.home_view = st.query_params["show"]
-    del st.query_params["show"]
+# 주소 끝 ?show=fridge|door 에 지금 보는 쪽을 늘 적어 둔다. → 새로고침해도 같은 화면
+# 주소 값이 마지막으로 적은 값과 다르면(새로고침, 휴대폰 아래 메뉴 누름) 주소를 따른다.
+show = st.query_params.get("show")
+if show in (VIEW_FRIDGE, VIEW_DOOR) and show != st.session_state.get("shown_view"):
+    st.session_state.home_view = show
+st.query_params["show"] = st.session_state.shown_view = st.session_state.home_view
 DOOR_CLOSED = st.session_state.home_view == VIEW_DOOR
 
 
@@ -521,7 +523,12 @@ def on_move():
     """재료를 다른 칸에 놓으면 저장한다. (저장한 뒤에 그려야 원래 칸으로 되돌아가 보이지 않는다)"""
     move = (state.get(BOARD_KEY) or {}).get("move")
     if move:
-        store.set_zone(store.load_items(), move.get("item_id"), move.get("zone"))
+        all_items = store.load_items()
+        item = next((i for i in all_items if i["id"] == move.get("item_id")), None)
+        from_bag = item is not None and item.get("zone") not in store.ZONES
+        if store.set_zone(all_items, move.get("item_id"), move.get("zone")) and from_bag:
+            item["new"] = True  # 봉투에서 직접 꺼내 넣은 재료도 [완료]를 누를 때까지 노란색
+            store.save_items(all_items)
 
 
 def on_autoplace():
@@ -549,7 +556,7 @@ def on_done():
 
 
 def on_undo():
-    """[취소]: 방금 자동으로 넣은 재료를 다시 새 재료 봉투로 돌려놓는다."""
+    """[취소]: 노란색으로 표시된(봉투에서 넣은) 재료를 다시 새 재료 봉투로 돌려놓는다."""
     all_items = store.load_items()
     undone = 0
     for item in all_items:
