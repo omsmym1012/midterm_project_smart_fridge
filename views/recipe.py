@@ -132,12 +132,18 @@ with tab_ing:
             state.recipe_chosen = [n for n in state.recipe_chosen if n in names]
         else:
             state.recipe_chosen = soon_names
+        # 고른 재료 태그를 모두 같은 너비로 (글자 길이에 따라 들쭉날쭉하지 않게, 넘치는 글자는 …)
+        tag_width = "calc(50% - 0.3rem)" if ui.is_mobile() else "9.5rem"  # 휴대폰은 한 줄에 2개
+        st.html(f"""<style>
+            .st-key-recipe_chosen span[data-tag] {{ width: {tag_width}; justify-content: space-between; }}
+            .st-key-recipe_chosen span[data-tag] > span {{ overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }}
+        </style>""")
         st.multiselect(
             "쓰고 싶은 재료",
             names,
             key="recipe_chosen",
             format_func=lambda n: f"{'🟠 ' if n in soon_names else ''}{n} ({dday[n]})",
-            placeholder="고르지 않으면 냉장고 재료 전체로 추천해요",
+            placeholder="쓰고 싶은 재료를 골라 주세요",
         )
 
         # [🧊 냉장고에서 고르기]: 냉장고 그림 팝업에서 재료를 눌러 고른다.
@@ -194,9 +200,11 @@ with tab_ing:
 
 
         col_new, col_more, _ = st.columns([1, 1.3, 2])
-        if col_new.button("추천 받기", type="primary"):
+        # 쓰고 싶은 재료를 하나도 고르지 않으면 추천 버튼을 누를 수 없다. (냉장고 전체로 추천하지 않음)
+        nothing = not state.recipe_chosen
+        if col_new.button("추천 받기", type="primary", disabled=nothing):
             run_recommend()
-        if state.recipe_picks and col_more.button("다른 요리 보기"):
+        if state.recipe_picks and col_more.button("다른 요리 보기", disabled=nothing):
             run_recommend(more=True)
 
         if state.recipe_notice:
