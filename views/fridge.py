@@ -601,13 +601,14 @@ BOARD_KEY = "fridge_board"
 
 
 def on_move():
-    """재료를 다른 칸에 놓으면 저장한다. (저장한 뒤에 그려야 원래 칸으로 되돌아가 보이지 않는다)"""
+    """재료를 놓으면 칸과 순서를 저장한다. (저장한 뒤에 그려야 원래 자리로 되돌아가 보이지 않는다)"""
     move = (state.get(BOARD_KEY) or {}).get("move")
     if move:
         all_items = store.load_items()
         item = next((i for i in all_items if i["id"] == move.get("item_id")), None)
         from_bag = item is not None and item.get("zone") not in store.ZONES
-        if store.set_zone(all_items, move.get("item_id"), move.get("zone")) and from_bag:
+        moved = store.place_in_zone(all_items, move.get("item_id"), move.get("zone"), move.get("before"))
+        if moved and from_bag:
             item["new"] = True  # 봉투에서 직접 꺼내 넣은 재료도 [완료]를 누를 때까지 노란색
             store.save_items(all_items)
 

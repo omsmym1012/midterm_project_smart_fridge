@@ -406,6 +406,7 @@ export default function (component) {
 
     function makeChip(item) {
         const chip = el("div", "fb-chip fb-" + item.status);
+        chip.dataset.id = item.id;
         if (selected.has(item.id)) chip.classList.add("fb-selected");
         if (newIds.has(item.id)) chip.classList.add("fb-new");
         chip.append(el("span", "fb-name", item.name), el("span", "fb-meta", item.meta));
@@ -492,11 +493,21 @@ export default function (component) {
             ghost.remove();
 
             const target = e.type === "pointerup" ? zoneAt(e.clientX, e.clientY) : null;
-            if (!target || chip.parentElement === lists[target.dataset.zone]) return;
+            if (!target) return;
+            // 놓은 위치 바로 아래에 있는 카드 앞에 끼워 넣는다. (같은 칸이면 순서 바꾸기, 없으면 맨 끝)
+            const list = lists[target.dataset.zone];
+            const next = Array.from(list.children).find((c) => {
+                if (!c.classList.contains("fb-chip") || c.dataset.id === item.id) return false;
+                const r = c.getBoundingClientRect();
+                return e.clientY < r.top + r.height / 2;
+            }) || null;
+            const nextSame = chip.nextElementSibling && chip.nextElementSibling.dataset.id !== item.id
+                ? chip.nextElementSibling : null;
+            if (chip.parentElement === list && next === nextSame) return;  // 제자리
             // 화면에서 먼저 옮겨 두고, Python에 알려서 저장한다.
-            lists[target.dataset.zone].appendChild(chip);
+            list.insertBefore(chip, next);
             const zone = target.dataset.zone === "tray" ? null : target.dataset.zone;
-            setTriggerValue("move", { item_id: item.id, zone: zone });
+            setTriggerValue("move", { item_id: item.id, zone: zone, before: next ? next.dataset.id : null });
         }
 
         chip.addEventListener("pointermove", onMove);
@@ -527,7 +538,7 @@ def _board_data(items):
     """컴포넌트에 넘길 데이터: 칸 이름과 냉장고 재료 목록"""
     cache = classifier.load_cache()  # 재료마다 파일을 읽지 않도록 한 번만 읽는다.
     data_items = []
-    for item in store.fridge_items_sorted(items):
+    for item in store.board_order(items):
         # 기한 지난 묶음과 남은 묶음이 섞여 있으면 카드를 두 장으로 나눠 보여 준다. (예: 우유 1팩 D+2 / 우유 1팩 D-5)
         # 두 카드는 같은 재료 id라서 고르기·옮기기·사용은 재료 단위로 함께 된다.
         expired = store.expired_batches(item)
@@ -554,7 +565,7 @@ def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mob
     """냉장고 칸 화면을 그린다.
 
     재료를 다른 칸에 놓으면 on_move, 누르면 on_toggle이 화면을 다시 그리기 전에 먼저 실행된다.
-    그 안에서 st.session_state[key]["move"]로 {"item_id", "zone"}을,
+    그 안에서 st.session_state[key]["move"]로 {"item_id", "zone", "before"(이 재료 앞에 끼움, 없으면 맨 끝)}을,
     st.session_state[key]["toggle"]로 누른(고르거나 푼) 재료 id를 읽을 수 있다.
     selected: 지금 골라 둔 재료 id들 (파란 테두리로 표시)
     animate=True: 문이 열리는 효과 (다른 페이지에서 넘어왔을 때)

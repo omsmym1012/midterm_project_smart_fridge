@@ -496,6 +496,30 @@ def recommend_zone(item):
     return ZONE_BY_CATEGORY.get(item.get("category"), "middle")
 
 
+def board_order(items):
+    """냉장고 그림에 보여 줄 순서: 사용자가 끌어서 정한 순서(pos)가 먼저, 정하지 않은 재료는 유통기한 순으로 뒤에"""
+    return sorted(fridge_items_sorted(items), key=lambda item: item.get("pos", float("inf")))
+
+
+def place_in_zone(items, item_id, zone, before_id=None):
+    """재료를 칸(zone, None이면 새 재료 봉투)의 before_id 재료 앞에 넣는다. (없으면 맨 끝)
+
+    그 칸 재료들의 순서(pos)를 0, 1, 2...로 다시 매겨 저장한다. 칸이 바뀌었으면 True.
+    """
+    item = _find(items, item_id)
+    if item is None or (zone is not None and zone not in ZONES):
+        return False
+    moved = item.get("zone") != zone
+    item["zone"] = zone
+    same = [i for i in board_order(items) if i.get("zone") == zone and i["id"] != item_id]
+    at = next((n for n, i in enumerate(same) if i["id"] == before_id), len(same))
+    same.insert(at, item)
+    for n, i in enumerate(same):
+        i["pos"] = n
+    save_items(items)
+    return moved
+
+
 def set_zone(items, item_id, zone):
     """재료를 다른 칸으로 옮긴다. zone이 None이면 "새 재료"로 되돌린다. 바뀌었으면 True."""
     item = _find(items, item_id)
