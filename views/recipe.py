@@ -109,6 +109,9 @@ with tab_ing:
         names = [f["name"] for f in fridge]
         dday = {f["name"]: f["dday"] for f in fridge}
         soon_names = [f["name"] for f in fridge if f["soon"]]
+        if "recipe_board_done" in state:
+            # 팝업에서 [고르기 완료]로 고른 목록을 고르기 칸을 그리기 전에 넣는다.
+            state.recipe_chosen = state.pop("recipe_board_done")
         if "recipe_chosen" in state:
             # 냉장고에서 빠진 재료는 선택에서도 뺀다. (없는 선택지가 남아 있으면 오류가 난다)
             state.recipe_chosen = [n for n in state.recipe_chosen if n in names]
@@ -122,13 +125,20 @@ with tab_ing:
             placeholder="고르지 않으면 냉장고 재료 전체로 추천해요",
         )
 
-        # [🧊 냉장고에서 고르기]: 냉장고 그림 팝업에서 재료를 눌러 고른다. (위 고르기 칸과 같은 목록을 바꾼다)
+        # [🧊 냉장고에서 고르기]: 냉장고 그림 팝업에서 재료를 눌러 고른다.
+        # 팝업은 따로 다시 그려지므로 고르기 칸(recipe_chosen)을 바로 바꾸면 화면의 옛 값에 덮인다.
+        # 그래서 팝업에서는 recipe_board_sel에 고르고, [고르기 완료]를 누를 때 고르기 칸에 넣는다.
+        def open_board():
+            state.recipe_board_sel = list(state.recipe_chosen)
+            state.recipe_board_open = True
+
+
         def on_board_toggle():
             item_id = (state.get("recipe_board") or {}).get("toggle")
             name = next((i["name"] for i in items if i["id"] == item_id), None)
             if name in names:
-                chosen = state.recipe_chosen
-                state.recipe_chosen = [n for n in chosen if n != name] if name in chosen else chosen + [name]
+                sel = state.recipe_board_sel
+                state.recipe_board_sel = [n for n in sel if n != name] if name in sel else sel + [name]
 
 
         @st.dialog("🧊 냉장고에서 고르기", width="large", on_dismiss=lambda: state.update(recipe_board_open=False))
@@ -137,15 +147,16 @@ with tab_ing:
             fridge_board(
                 [i for i in items if i["name"] in names], key="recipe_board", on_move=lambda: None,
                 on_toggle=on_board_toggle, mobile=ui.is_mobile(), pick_only=True,
-                selected=[i["id"] for i in items if i["name"] in state.recipe_chosen],
+                selected=[i["id"] for i in items if i["name"] in state.recipe_board_sel],
             )
-            if st.button(f"고르기 완료 ({len(state.recipe_chosen)})", type="primary", width="stretch"):
+            if st.button(f"고르기 완료 ({len(state.recipe_board_sel)})", type="primary", width="stretch",
+                         key="recipe_board_ok"):
+                state.recipe_board_done = state.recipe_board_sel
                 state.recipe_board_open = False
                 st.rerun()
 
 
-        # on_click으로 연다: `if st.button(...)`은 팝업 안에서 다시 그린 뒤에도 True로 남아 팝업이 다시 열릴 수 있다.
-        st.button("🧊 냉장고에서 고르기", on_click=lambda: state.update(recipe_board_open=True))
+        st.button("🧊 냉장고에서 고르기", on_click=open_board)
         if state.get("recipe_board_open"):
             board_dialog()
         state.setdefault("recipe_picks", None)
