@@ -82,6 +82,7 @@ state = st.session_state
 state.setdefault("add_open", False)     # 재료 추가 팝업이 열려 있는지
 state.setdefault("multi_selected", [])  # 칸 그림에서 고른 재료 id들
 state.setdefault("multi_open", False)   # 고른 재료 사용 팝업이 열려 있는지
+state.setdefault("single_id", None)     # 우클릭(휴대폰은 길게 누르기)으로 하나만 사용하는 재료 id
 state.setdefault("bulk_rebuy", None)    # 사용·소진·폐기로 없어진 재료들 (장바구니에 담을지 한 번에 묻기)
 
 # 새로고침해도 열려 있던 팝업이 다시 뜨도록 주소 끝 ?popup=add|use|put (고른 재료는 &pick=id,id)에 적어 둔다.
@@ -99,6 +100,7 @@ def close_dialogs():
     """팝업을 닫는다. (팝업 ✕를 눌렀을 때도 실행)"""
     state.add_open = False
     state.multi_open = False
+    state.single_id = None
     state.receipt_open = False
 
 
@@ -364,18 +366,36 @@ def on_toggle():
 ACT_USE, ACT_EMPTY, ACT_DISCARD = "사용", "소진", "폐기"
 
 
+def on_detail():
+    """재료 우클릭(휴대폰은 길게 누르기): 그 재료 하나만 사용하는 팝업을 연다. (고른 목록은 그대로)"""
+    item_id = (state.get(BOARD_KEY) or {}).get("detail")
+    if item_id:
+        close_dialogs()
+        clear_keys("multi_act_")
+        clear_keys("multi_amt_")
+        state.single_id = item_id
+
+
 @st.dialog("고른 재료 사용", on_dismiss=close_dialogs)
 def multi_dialog():
-    """고른 재료마다 쓰는 양을 입력하거나 [소진]/[폐기]를 골라 한 번에 적용한다.
+    use_body([i for i in store.fridge_items_sorted(items) if i["id"] in state.multi_selected], from_selection=True)
+
+
+@st.dialog("재료 사용", on_dismiss=close_dialogs)
+def single_dialog():
+    use_body([i for i in store.fridge_items_sorted(items) if i["id"] == state.single_id], from_selection=False)
+
+
+def use_body(chosen, from_selection):
+    """재료마다 쓰는 양을 입력하거나 [소진]/[폐기]를 골라 한 번에 적용한다. (여러 개 / 하나 팝업 공통)
 
     - 사용: 쓰는 양만큼 줄인다. (0이면 그대로)
     - 소진: 남은 양을 모두 다 쓴 것으로
     - 폐기: 유통기한이 지난 묶음만 버린다. (기한 지난 묶음이 있는 재료에만 보인다)
     다 쓰거나 버려서 없어진 재료는 마지막에 장바구니에 담을지 한 번에 묻는다.
     """
-    chosen = [i for i in store.fridge_items_sorted(items) if i["id"] in state.multi_selected]
     if not chosen:
-        st.info("고른 재료가 없어요.")
+        st.info("고른 재료가 없어요." if from_selection else "이미 다 쓰거나 버린 재료예요.")
         return
     plans = {}
     for item in chosen:
@@ -430,7 +450,8 @@ def multi_dialog():
                 source = shop.SOURCE_DISCARDED
             if item["status"] == store.STATUS_USED:
                 gone.append({"item_id": item["id"], "name": item["name"], "unit": item["unit"], "source": source})
-        clear_selection()
+        if from_selection:
+            clear_selection()  # 하나만 쓸 때는 다른 재료를 골라 둔 것은 그대로 둔다.
         close_dialogs()
         message = f"처리했어요: {', '.join(done)}." if done else "바뀐 재료가 없어요."
         if gone:
@@ -527,7 +548,7 @@ if not DOOR_CLOSED:
             if picked:
                 col_summary.button(f"✕ 선택 해제 ({picked})", type="tertiary", on_click=clear_selection)
             else:
-                col_summary.caption("재료를 눌러 고르고 [사용]을 누르세요. 끌면 칸을 옮길 수 있어요.")
+                col_summary.caption("재료를 눌러 고르고 [사용]을 누르세요. 우클릭하면 하나만 사용, 끌면 칸 이동.")
             col_add, col_receipt = col_buttons.columns(2, gap="small")
             col_add.button("＋ 재료 추가", width="stretch", on_click=open_add_dialog)
             col_receipt.button("🧾 영수증", width="stretch", on_click=go_receipt)
@@ -626,7 +647,7 @@ with st.container(key="fridge_stage"):
         # 다른 페이지에서 냉장고(문 열린 상태)로 들어왔을 때만 문 열림 효과
         animate=state.get("page_changed", False) and not DOOR_CLOSED, mobile=MOBILE,
         hide_outside=DOOR_CLOSED,  # 문이 닫히면(장보기) 냉장고 밖(실온)은 안 보이게
-        new_ids=new_ids, on_autoplace=on_autoplace, on_done=on_done, on_undo=on_undo, on_fill=on_fill,
+        new_ids=new_ids, on_autoplace=on_autoplace, on_done=on_done, on_undo=on_undo, on_fill=on_fill, on_detail=on_detail,
     )
     door = st.container(key="fridge_door", gap="small")
 shopping_panel.render(head, door, MOBILE, show_head=DOOR_CLOSED)
@@ -646,6 +667,8 @@ if state.bulk_rebuy:
     bulk_rebuy_dialog()
 elif state.multi_open:
     multi_dialog()
+elif state.single_id:
+    single_dialog()
 elif state.add_open:
     add_dialog()
 elif state.get("receipt_open"):

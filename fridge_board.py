@@ -414,13 +414,29 @@ export default function (component) {
         chip.addEventListener("pointerenter", () => { if (!dragging) setRecommend(item.recommend, true); });
         chip.addEventListener("pointerleave", () => { if (!dragging) setRecommend(item.recommend, false); });
         chip.addEventListener("pointerdown", (event) => startDrag(event, chip, item));
+        // 우클릭(마우스): 이 재료 하나만 사용하는 팝업. (휴대폰은 길게 누르기 → startDrag에서 처리)
+        chip.addEventListener("contextmenu", (event) => {
+            event.preventDefault();
+            if (!data.pickOnly && lastPointer === "mouse") setTriggerValue("detail", item.id);
+        });
         return chip;
     }
 
+    let lastPointer = "mouse";  // 마지막으로 누른 것이 마우스인지 손가락인지 (우클릭 메뉴가 두 번 뜨지 않게)
+    const LONG_PRESS = 500;     // ms. 손가락으로 이만큼 누르고 있으면 '길게 누르기'
+
     // 끌기: 포인터 이벤트를 써서 마우스와 터치에서 똑같이 동작하게 한다.
     function startDrag(event, chip, item) {
+        lastPointer = event.pointerType;
         if (event.button !== 0) return;
         event.preventDefault();
+        // 손가락으로 길게 누르면(움직이지 않고) 이 재료 하나만 사용하는 팝업을 연다. (휴대폰의 우클릭)
+        let longPressed = false;
+        const pressTimer = event.pointerType === "mouse" || data.pickOnly ? null : setTimeout(() => {
+            if (ghost) return;
+            longPressed = true;
+            setTriggerValue("detail", item.id);
+        }, LONG_PRESS);
         chip.setPointerCapture(event.pointerId);
         const rect = chip.getBoundingClientRect();
         const offsetX = event.clientX - rect.left;
@@ -463,6 +479,8 @@ export default function (component) {
             chip.classList.remove("fb-placeholder");
             setRecommend(item.recommend, false);
             dragging = null;
+            clearTimeout(pressTimer);
+            if (longPressed) return;  // 길게 누르기였으면 고르기/풀기는 하지 않는다.
             if (!ghost) {
                 // 움직이지 않고 손을 뗐으면 "누르기": 고르기/풀기. 화면에서 먼저 바꿔 두고 Python에 알린다.
                 if (e.type === "pointerup") {
@@ -526,7 +544,7 @@ def _board_data(items):
 
 def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mobile=False, on_close=None,
                  hide_outside=False, new_ids=(), on_autoplace=None, on_done=None, on_undo=None,
-                 on_fill=None, pick_only=False):
+                 on_fill=None, pick_only=False, on_detail=None):
     """냉장고 칸 화면을 그린다.
 
     재료를 다른 칸에 놓으면 on_move, 누르면 on_toggle이 화면을 다시 그리기 전에 먼저 실행된다.
@@ -540,6 +558,7 @@ def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mob
     new_ids: 자동으로 넣어서 노란 형광펜으로 표시할 재료 id들
     on_autoplace: 봉투의 [추천 칸에 모두 넣기]를 눌렀을 때, on_done: [완료], on_undo: [취소]를 눌렀을 때 실행
     on_fill: 칸 이름을 더블클릭했을 때 실행 (st.session_state[key]["fill"]["zone"]에 그 칸 id)
+    on_detail: 재료를 우클릭(휴대폰은 길게 누르기)했을 때 실행 (st.session_state[key]["detail"]에 재료 id)
     pick_only=True: 누르기(고르기)만 된다. 끌어 옮기기·봉투 버튼·손잡이·칸 이름 더블클릭은 끈다. (요리 추천에서 재료 고르기)
     """
     data = _board_data(items)
@@ -558,4 +577,5 @@ def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mob
         on_close_change=on_close or (lambda: None),
         on_autoplace_change=on_autoplace or (lambda: None), on_done_change=on_done or (lambda: None),
         on_undo_change=on_undo or (lambda: None), on_fill_change=on_fill or (lambda: None),
+        on_detail_change=on_detail or (lambda: None),
     )
