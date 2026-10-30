@@ -12,7 +12,13 @@
    주소 끝에 ?view=mobile 또는 ?view=pc 를 붙이면 강제로 바꿔 볼 수 있다. (PC에서 휴대폰 화면 확인용)
 """
 
+import json
+from datetime import date
+from pathlib import Path
+
 import streamlit as st
+
+import storage
 
 MOBILE_WIDTH = 700  # px. 이보다 좁으면 모바일 화면
 
@@ -193,3 +199,45 @@ def show_flash():
     if "flash" in st.session_state:
         ok, message = st.session_state.pop("flash")
         st.toast(message, icon="✅" if ok else "⚠️", duration="long")
+
+
+# ---------------------------------------------------------------
+# 팝업에 적던 내용 임시 저장 (5단계)
+# 새로고침하면 화면 기억(session_state)이 비므로, 팝업 입력칸 값을 사용자별 저장소("draft")에 적어 두고
+# 페이지를 처음 그릴 때 다시 채운다. 팝업 안에서 값을 바꾸면 팝업만 다시 그려지므로 팝업마다 save_draft()를 부른다.
+# ---------------------------------------------------------------
+DRAFT_FILE = Path(__file__).parent / "data" / "draft.json"  # 로그인 전(테스트)에만 쓰는 파일
+# 저장할 입력칸 이름(앞부분). add_: 재료 추가, multi_: 재료 사용, bulk_: 장바구니 담기, receipt_draft: 영수증 표
+DRAFT_PREFIXES = ("add_", "multi_amt_", "multi_act_", "bulk_", "single_id", "receipt_draft")
+DRAFT_SKIP = ("add_msg",)  # 한 번 보여 주고 끝나는 알림은 남기지 않는다.
+POPUP_KEYS = ("add_open", "multi_open", "single_id", "receipt_open", "put_ask", "bulk_rebuy")
+
+
+def _encode(value):
+    """날짜는 JSON에 그대로 못 넣으므로 {"__date__": "2026-10-30"} 꼴로 바꾼다."""
+    return json.loads(json.dumps(value, default=lambda v: {"__date__": v.isoformat()[:10]}))
+
+
+def _decode(obj):
+    return date.fromisoformat(obj["__date__"]) if set(obj) == {"__date__"} else obj
+
+
+def save_draft():
+    """열린 팝업의 입력칸 값을 저장한다. 팝업이 없으면 비운다. (바뀌었을 때만 저장)"""
+    state = st.session_state
+    draft = {}
+    if any(state.get(key) for key in POPUP_KEYS):
+        draft = _encode({
+            key: value for key, value in state.items()
+            if str(key).startswith(DRAFT_PREFIXES) and key not in DRAFT_SKIP
+        })
+    if draft != state.get("_draft_saved", {}):
+        storage.save("draft", DRAFT_FILE, draft)
+        state._draft_saved = draft
+
+
+def restore_draft():
+    """새로고침 직후 한 번: 저장해 둔 팝업 입력칸 값을 다시 채운다."""
+    draft = storage.load("draft", DRAFT_FILE, {})
+    st.session_state._draft_saved = draft
+    st.session_state.update(json.loads(json.dumps(draft), object_hook=_decode))

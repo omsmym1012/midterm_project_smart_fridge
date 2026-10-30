@@ -65,8 +65,9 @@ def _login_form():
     st.caption("내 냉장고를 쓰려면 닉네임으로 로그인하세요.")
     tab_in, tab_new = st.tabs(["로그인", "처음이에요"])
     with tab_in, st.form("login_form"):
-        nickname = st.text_input("닉네임")
-        password = st.text_input("비밀번호", type="password")
+        nickname = st.text_input("닉네임", autocomplete="username")
+        # Streamlit 비밀번호 칸은 기본이 '새 비밀번호'라서 브라우저가 비밀번호 추천을 띄운다. 로그인 칸은 '기존 비밀번호'로
+        password = st.text_input("비밀번호", type="password", autocomplete="current-password")
         if st.form_submit_button("로그인", type="primary", width="stretch"):
             try:
                 ok, message = storage.sign_in(nickname, password)
@@ -108,10 +109,17 @@ def log_out():
         storage.drop_token(state.get("auth_token"))
     except storage.StorageError:
         pass  # 저장소에 못 지워도 브라우저에서는 지우므로 자동 로그인은 되지 않는다.
-    for key in list(state.keys()):
-        del state[key]
-    state.auth_checked = True
-    state.auth_clear = True
+    # 화면 기억은 여기(버튼 처리 중)서 지우지 않고 다음 실행 맨 앞에서 지운다. (clear_pending)
+    # 여기서 지우면 뒤이어 실행되는 다른 입력칸의 처리 코드가 지워진 값을 읽다가 오류가 난다.
+    state.clear_to = {"auth_checked": True, "auth_clear": True}
+
+
+def clear_pending():
+    """로그아웃·테스트 데이터 넣기로 예약된 화면 기억 지우기. 남길 값(clear_to)만 다시 넣는다."""
+    if "clear_to" in state:
+        keep = state.clear_to
+        state.clear()
+        state.update(keep)
 
 
 def keep_keys():

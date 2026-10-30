@@ -15,6 +15,9 @@ import sample_data
 import shopping_store
 import ui
 
+# 로그아웃·테스트 데이터 넣기로 예약된 화면 기억 지우기 (다른 코드가 화면 기억을 읽기 전에)
+auth.clear_pending()
+
 # 휴대폰이면 사이드바를 접어 두고, 아래쪽 메뉴 막대로 이동한다. (ui.py)
 mobile = ui.is_mobile()
 st.set_page_config(
@@ -65,11 +68,8 @@ if mobile:
 def reset_to_sample():
     sample_data.load_sample()
     # 입력칸·열린 창·추천 결과 같은 화면 상태도 모두 지워서 처음 상태로 만든다. (로그인은 그대로)
-    login = auth.keep_keys()
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
-    st.session_state.update(login)
-    st.session_state.flash = (True, "🧪 테스트 데이터를 넣었어요.")
+    # 지우기는 다음 실행 맨 앞에서 한다. (auth.clear_pending)
+    st.session_state.clear_to = {**auth.keep_keys(), "flash": (True, "🧪 테스트 데이터를 넣었어요.")}
 
 
 with st.sidebar:

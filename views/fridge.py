@@ -86,7 +86,8 @@ state.setdefault("single_id", None)     # 우클릭(휴대폰은 길게 누르�
 state.setdefault("bulk_rebuy", None)    # 사용·소진·폐기로 없어진 재료들 (장바구니에 담을지 한 번에 묻기)
 
 # 새로고침해도 열려 있던 팝업이 다시 뜨도록 주소 끝 ?popup=add|use|put (고른 재료는 &pick=id,id)에 적어 둔다.
-# 새로고침하면 화면 기억이 비므로, 처음 실행할 때 한 번만 주소를 읽는다. (팝업 안에 적던 내용은 남지 않는다)
+# 새로고침하면 화면 기억이 비므로, 처음 실행할 때 한 번만 주소를 읽는다.
+# 팝업 안에 적던 내용은 사용자별 저장소에 임시 저장해 두었다가 다시 채운다. (ui.save_draft / restore_draft)
 POPUP_FLAGS = {"add": "add_open", "use": "multi_open", "put": "put_ask", "receipt": "receipt_open"}
 if "popup_restored" not in state:
     state.popup_restored = True
@@ -94,6 +95,9 @@ if "popup_restored" not in state:
         state.multi_selected = st.query_params["pick"].split(",")
     if st.query_params.get("popup") in POPUP_FLAGS:
         state[POPUP_FLAGS[st.query_params["popup"]]] = True
+    ui.restore_draft()
+    if state.get("receipt_open") and state.get("receipt_draft"):
+        state.receipt_rows = state.receipt_draft  # 영수증 표는 고친 내용까지 그대로
 
 
 def close_dialogs():
@@ -325,6 +329,7 @@ def add_dialog():
         col_ok, col_cancel = st.columns(2)
         col_ok.button("이대로 추가", on_click=on_add_click, kwargs={"confirmed": True})
         col_cancel.button("취소", key="cancel_add_confirm", on_click=cancel_confirm)
+    ui.save_draft()
 
 
 # ---------------------------------------------------------------
@@ -454,6 +459,7 @@ def use_body(chosen, from_selection):
             if act != ACT_USE:
                 amount = 0.0
             plans[item["id"]] = (item, act, amount, expired)
+    ui.save_draft()
 
     if st.button("적용하기", type="primary", width="stretch"):
         done, gone = [], []
@@ -505,6 +511,7 @@ def bulk_rebuy_dialog():
                 key=f"bulk_qty_{gone['item_id']}",
             )
             picks.append((gone, quantity))
+    ui.save_draft()
 
     col_yes, col_no = st.columns(2)
     add = col_yes.button("추가", type="primary", width="stretch", disabled=not picks)
@@ -696,6 +703,7 @@ for param, value in (
         st.query_params[param] = value
     else:
         st.query_params.pop(param, None)
+ui.save_draft()  # 팝업이 닫혔으면 임시 저장도 비운다.
 
 # 열려 있어야 하는 팝업을 연다. (한 번에 하나만)
 if state.bulk_rebuy:

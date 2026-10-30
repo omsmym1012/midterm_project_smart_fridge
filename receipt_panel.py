@@ -76,6 +76,7 @@ def receipt_dialog():
     # 1) 사진 올리기 → 읽기
     # ---------------------------------------------------------------
     if state.receipt_rows is None:
+        state.pop("receipt_draft", None)  # 표가 없으면 임시 저장한 표도 지운다.
         # [📷 사진 찍기]로 카메라(PC는 웹캠)를 켜거나, [🖼️ 사진 올리기]로 파일·앨범에서 고른다.
         # 처음 고른 쪽: 휴대폰은 찍기, PC는 올리기. (카메라는 https 주소에서만 켜진다. 배포 사이트·localhost는 괜찮다)
         how = st.segmented_control(
@@ -130,6 +131,13 @@ def receipt_dialog():
             "유통기한": st.column_config.DateColumn(format="YYYY-MM-DD"),
         },
     )
+
+    # 새로고침해도 고친 표가 남게 임시 저장한다. (빈 칸은 None, 날짜는 날짜로)
+    state.receipt_draft = [
+        {k: (v.date() if isinstance(v, pd.Timestamp) else clean(v)) for k, v in row.items()}
+        for row in edited.to_dict("records")
+    ]
+    ui.save_draft()
 
     rows = [
         row for row in edited.to_dict("records")
