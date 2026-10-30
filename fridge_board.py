@@ -11,6 +11,9 @@ HTML·CSS·JavaScript를 직접 넣은 작은 컴포넌트를 만든다.
 - 재료를 마우스(또는 손가락)로 잡으면 추천 칸 색이 연하게 바뀌고,
   다른 칸에 놓으면 Python으로 {"item_id", "zone"}을 보낸다. ("move" 이벤트)
 - 끌지 않고 누르기만 하면 그 재료를 고르거나 푼다. ("toggle" 이벤트, 고른 재료는 파란 테두리)
+- 휴대폰: 끌기 대신 누르기만 한다. (스크롤하다 재료가 끌려가지 않게)
+  재료를 고르고 칸 이름을 누르면 고른 재료가 모두 그 칸으로 간다. ("moveto" 이벤트)
+  새 재료 봉투는 화면 아래에 떠 있는 접이식 막대 (누르면 펼쳐짐)
 """
 
 import streamlit as st
@@ -288,6 +291,23 @@ CSS = """
 .fb-mobile .fb-cavity { grid-template-columns: 1fr 38%; gap: 6px; }
 .fb-mobile .fb-chip { font-size: 0.8rem; padding: 5px 6px; }
 .fb-mobile .fb-meta { font-size: 0.74rem; }
+/* 휴대폰: 재료 위에서도 위아래 스크롤이 되게, 길게 눌렀을 때 복사 메뉴가 뜨지 않게 */
+.fb-mobile .fb-chip { touch-action: pan-y; -webkit-touch-callout: none; }
+/* 휴대폰: 재료를 고르면 칸 이름이 '여기로 옮기기' 버튼처럼 바뀐다 */
+.fb-mobile.fb-targets .fb-zone:not(.fb-tray) > .fb-zone-title { color: var(--fb-primary); font-weight: 700; }
+.fb-mobile.fb-targets .fb-zone:not(.fb-tray) > .fb-zone-title::after { content: "  ← 여기로"; font-weight: 400; }
+/* 휴대폰: 새 재료 봉투는 화면 아래(메뉴 막대 위)에 떠 있고, 이름 줄을 누르면 펼쳐지고 접힌다 */
+.fb-tray.fb-float {
+    position: fixed; left: 10px; right: 10px; bottom: calc(66px + env(safe-area-inset-bottom));
+    z-index: 999980; margin-top: 0; padding: 12px 10px 8px;
+}
+.fb-tray.fb-float > .fb-zone-title { margin-bottom: 0; font-size: 0.85rem; }
+.fb-tray.fb-float.fb-open > .fb-zone-title { margin-bottom: 8px; }
+.fb-tray.fb-float:not(.fb-open) > :not(.fb-zone-title) { display: none; }
+.fb-tray.fb-float:not(.fb-open) { min-height: 0; padding-bottom: 12px; cursor: pointer; }
+.fb-tray.fb-float .fb-list { max-height: 40vh; overflow-y: auto; }
+.fb-tray.fb-float::before { top: -22px; height: 26px; }   /* 손잡이를 조금 낮게 */
+.fb-root.fb-has-float { padding-bottom: 64px; }            /* 떠 있는 봉투에 맨 아래 칸이 가리지 않게 */
 """
 
 # 냉장고 몸체 높이(px). 장보기 페이지의 닫힌 문도 이 값을 써서 두 화면의 냉장고 크기를 똑같이 맞춘다.
@@ -328,7 +348,12 @@ export default function (component) {
         box.dataset.zone = id;
         const list = el("div", "fb-list");
         const head = el("div", "fb-zone-title", title);
-        if (id !== "tray" && !data.pickOnly) {
+        if (id !== "tray" && !data.pickOnly && data.mobile) {
+            // 휴대폰: 재료를 고른 상태에서 칸 이름을 누르면 고른 재료를 모두 이 칸으로 옮긴다.
+            head.addEventListener("click", () => {
+                if (root.querySelector(".fb-chip.fb-selected")) setTriggerValue("moveto", { zone: id, at: Date.now() });
+            });
+        } else if (id !== "tray" && !data.pickOnly) {
             // 칸 이름을 더블클릭하면 봉투의 재료 중 이 칸이 추천 칸인 것만 넣는다.
             head.title = "더블클릭: 이 칸이 추천 칸인 새 재료 넣기";
             head.addEventListener("dblclick", () => setTriggerValue("fill", { zone: id, at: Date.now() }));
@@ -408,7 +433,7 @@ export default function (component) {
     const doorClosed = !!data.hideOutside;
     const bagToPut = doorClosed && !!data.bagToPut;
     if (doorClosed && inTray) tray.insertBefore(el("div", "fb-new-bar",
-        bagToPut ? "끌어서 냉장고 넣기 목록으로 옮길 수 있어요" : "냉장고 화면에서 넣을 수 있어요"), lists.tray);
+        bagToPut ? (data.mobile ? "누르면" : "끌어서") + " 냉장고 넣기 목록으로 옮길 수 있어요" : "냉장고 화면에서 넣을 수 있어요"), lists.tray);
     if (newIds.size && !data.pickOnly && !doorClosed) {
         tray.insertBefore(el("div", "fb-new-bar", "새로 넣은 재료 " + newIds.size + "개"), lists.tray);
         // [완료]: 표시만 지우기 / [취소]: 방금 넣은 재료를 다시 봉투로
@@ -417,6 +442,29 @@ export default function (component) {
         tray.insertBefore(row, lists.tray);
     }
     if (inTray && !data.pickOnly && !doorClosed) tray.insertBefore(trayButton("추천 칸에 모두 넣기", "autoplace"), lists.tray);
+
+    // 휴대폰 냉장고 화면: 봉투를 화면 아래에 띄운다. 펼침 상태는 다시 그려도 남게 window에 기억한다.
+    const floatBag = data.mobile && !doorClosed && !data.pickOnly;
+    function setBagOpen(open) {
+        window.__ftBagOpen = open;
+        tray.classList.toggle("fb-open", open);
+        tray.firstChild.textContent = "🛍️ 새 재료 " + inTray + (open ? "  ▼" : "  ▲");
+    }
+    if (floatBag) {
+        tray.classList.add("fb-float");
+        root.classList.add("fb-has-float");
+        if (!inTray && !newIds.size) tray.style.display = "none";  // 봉투가 비었으면 막대도 숨긴다.
+        // 접혀 있으면 막대 어디를 눌러도 펼치고, 펼쳐져 있으면 이름 줄을 눌러 접는다.
+        tray.addEventListener("click", (e) => {
+            if (e.target.closest(".fb-chip, .fb-tray-btn")) return;  // 재료·버튼을 누른 건 펼치기/접기가 아니다.
+            if (!window.__ftBagOpen || e.target === tray.firstChild) setBagOpen(!window.__ftBagOpen);
+        });
+        setBagOpen(!!window.__ftBagOpen);
+    }
+    // 고른 재료가 있으면 칸 이름을 '여기로' 버튼처럼 보이게 (휴대폰)
+    function markTargets() {
+        root.classList.toggle("fb-targets", !!root.querySelector(".fb-chip.fb-selected"));
+    }
 
     function setRecommend(zoneId, on) {
         zoneBoxes.forEach((box) => box.classList.toggle("fb-recommend", on && box.dataset.zone === zoneId));
@@ -441,7 +489,7 @@ export default function (component) {
 
         chip.addEventListener("pointerenter", () => { if (!dragging) setRecommend(item.recommend, true); });
         chip.addEventListener("pointerleave", () => { if (!dragging) setRecommend(item.recommend, false); });
-        chip.addEventListener("pointerdown", (event) => startDrag(event, chip, item));
+        chip.addEventListener("pointerdown", (event) => (data.mobile ? startTap : startDrag)(event, chip, item));
         // 우클릭(마우스): 이 재료 하나만 사용하는 팝업. (휴대폰은 길게 누르기 → startDrag에서 처리)
         chip.addEventListener("contextmenu", (event) => {
             event.preventDefault();
@@ -452,6 +500,40 @@ export default function (component) {
 
     let lastPointer = "mouse";  // 마지막으로 누른 것이 마우스인지 손가락인지 (우클릭 메뉴가 두 번 뜨지 않게)
     const LONG_PRESS = 500;     // ms. 손가락으로 이만큼 누르고 있으면 '길게 누르기'
+
+    // 휴대폰: 누르기만. 손가락이 움직이면 스크롤이므로 아무것도 하지 않고, 움직이지 않고 오래 누르면 사용 팝업.
+    function startTap(event, chip, item) {
+        lastPointer = event.pointerType;
+        const x = event.clientX, y = event.clientY;
+        let moved = false, longPressed = false;
+        const timer = data.pickOnly || doorClosed ? null : setTimeout(() => {
+            if (!moved) { longPressed = true; setTriggerValue("detail", item.id); }
+        }, LONG_PRESS);
+        function onMove(e) {
+            if (Math.abs(e.clientX - x) + Math.abs(e.clientY - y) > 10) { moved = true; clearTimeout(timer); }
+        }
+        function onUp(e) {
+            clearTimeout(timer);
+            chip.removeEventListener("pointermove", onMove);
+            chip.removeEventListener("pointerup", onUp);
+            chip.removeEventListener("pointercancel", onUp);  // 브라우저가 스크롤을 시작하면 cancel이 온다.
+            if (moved || longPressed || e.type !== "pointerup") return;
+            const inBag = !(item.zone && lists[item.zone]);
+            if (bagToPut && inBag) {  // 장보기 냉장고 넣기 탭: 봉투 재료를 누르면 냉장고 넣기 목록으로
+                chip.remove();
+                setTriggerValue("toput", item.id);
+                return;
+            }
+            if (doorClosed) return;
+            chip.classList.toggle("fb-selected");
+            setTriggerValue("toggle", item.id);
+            if (floatBag && inBag && chip.classList.contains("fb-selected")) setBagOpen(false);  // 냉장고 칸이 보이게 접는다.
+            markTargets();
+        }
+        chip.addEventListener("pointermove", onMove);
+        chip.addEventListener("pointerup", onUp);
+        chip.addEventListener("pointercancel", onUp);
+    }
 
     // 끌기: 포인터 이벤트를 써서 마우스와 터치에서 똑같이 동작하게 한다.
     function startDrag(event, chip, item) {
@@ -556,6 +638,7 @@ export default function (component) {
         const zone = item.zone && lists[item.zone] ? item.zone : "tray";
         lists[zone].appendChild(makeChip(item));
     });
+    markTargets();  // 이미 골라 둔 재료가 있으면 처음부터 칸 이름을 '여기로'로
 }
 """
 
@@ -593,7 +676,7 @@ def _board_data(items):
 
 def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mobile=False, on_close=None,
                  hide_outside=False, new_ids=(), on_autoplace=None, on_done=None, on_undo=None,
-                 on_fill=None, pick_only=False, on_detail=None, bag_to_put=False, on_to_put=None):
+                 on_fill=None, pick_only=False, on_detail=None, bag_to_put=False, on_to_put=None, on_move_to=None):
     """냉장고 칸 화면을 그린다.
 
     재료를 다른 칸에 놓으면 on_move, 누르면 on_toggle이 화면을 다시 그리기 전에 먼저 실행된다.
@@ -608,7 +691,8 @@ def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mob
     on_autoplace: 봉투의 [추천 칸에 모두 넣기]를 눌렀을 때, on_done: [완료], on_undo: [취소]를 눌렀을 때 실행
     on_fill: 칸 이름을 더블클릭했을 때 실행 (st.session_state[key]["fill"]["zone"]에 그 칸 id)
     on_detail: 재료를 우클릭(휴대폰은 길게 누르기)했을 때 실행 (st.session_state[key]["detail"]에 재료 id)
-    bag_to_put=True: (장보기 냉장고 넣기 탭) 봉투 재료를 문 위에 놓으면 on_to_put 실행 (st.session_state[key]["toput"]에 재료 id)
+    bag_to_put=True: (장보기 냉장고 넣기 탭) 봉투 재료를 문 위에 놓으면(휴대폰은 누르면) on_to_put 실행 (st.session_state[key]["toput"]에 재료 id)
+    on_move_to: (휴대폰) 재료를 고르고 칸 이름을 눌렀을 때 실행 (st.session_state[key]["moveto"]["zone"]에 칸 id)
     pick_only=True: 누르기(고르기)만 된다. 끌어 옮기기·봉투 버튼·손잡이·칸 이름 더블클릭은 끈다. (요리 추천에서 재료 고르기)
     """
     data = _board_data(items)
@@ -629,4 +713,5 @@ def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mob
         on_autoplace_change=on_autoplace or (lambda: None), on_done_change=on_done or (lambda: None),
         on_undo_change=on_undo or (lambda: None), on_fill_change=on_fill or (lambda: None),
         on_detail_change=on_detail or (lambda: None), on_toput_change=on_to_put or (lambda: None),
+        on_moveto_change=on_move_to or (lambda: None),
     )

@@ -12,7 +12,7 @@
   - `ui.py`: 화면 공통 (다크 모드·휴대폰 화면 감지, 머리 영역, 알림, 아래쪽 메뉴, 앱 전체 CSS)
   - `.streamlit/config.toml`: 앱 색·글꼴 테마 (밝게/어둡게)
   - `fridge_store.py`: 냉장고 데이터 저장/불러오기 (`data/fridge.json`)
-  - `fridge_board.py`: 냉장고 칸 드래그 앤 드롭 화면 (`st.components.v2`, 실제 냉장고 모양)
+  - `fridge_board.py`: 냉장고 칸 드래그 앤 드롭 화면 (`st.components.v2`, 실제 냉장고 모양). 휴대폰은 끌기 대신 재료 누르기 → 칸 이름 누르기, 새 재료 봉투는 화면 아래 접이식
   - `shopping_store.py`: 장보기 데이터 저장/불러오기, 추천 후보 (`data/shopping.json`)
   - `usage_log.py`: 산·쓴·버린 기록과 구매 적정량 추천 (`data/usage_log.json`)
   - `classifier.py`: 재료 분류·추천 단위 (목록 → AI, 결과는 `data/classify_cache.json`)
