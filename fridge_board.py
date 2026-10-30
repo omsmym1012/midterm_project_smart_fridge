@@ -36,6 +36,8 @@ CSS = """
     --fb-counter: linear-gradient(180deg, #e2c49c 0%, #cfa977 100%);        /* 조리대(냉장고 밖) */
     --fb-counter-text: #4b3722;
     --fb-bag: linear-gradient(180deg, #ecd9b6 0%, #e0c899 100%);            /* 장바구니 봉투(새 재료) */
+    --fb-bag-top: #ecd9b6;      /* 봉투 윗단 톱니 (봉투 위쪽 색과 같게) */
+    --fb-bag-handle: #a8814c;   /* 봉투 손잡이 끈 */
     --fb-bag-text: #5a4429;
     --fb-shadow: 0 10px 24px rgba(30, 45, 50, 0.18);
     position: relative;
@@ -62,6 +64,8 @@ CSS = """
     --fb-counter: linear-gradient(180deg, #6b5136 0%, #574129 100%);
     --fb-counter-text: #f3e4cf;
     --fb-bag: linear-gradient(180deg, #6e5a3c 0%, #5c4a30 100%);
+    --fb-bag-top: #6e5a3c;
+    --fb-bag-handle: #a3865c;
     --fb-bag-text: #f5e8d2;
     --fb-shadow: 0 10px 24px rgba(0, 0, 0, 0.45);
 }
@@ -175,11 +179,27 @@ CSS = """
 }
 .fb-counter .fb-zone-title { color: var(--fb-counter-text); opacity: 0.9; }
 
-/* 새 재료: 장바구니 봉투 */
+/* 새 재료: 종이 쇼핑백 모양 (손잡이 끈 + 톱니 모양 윗단 + 양옆 접힌 선) */
 .fb-tray {
-    background: var(--fb-bag); border-radius: 6px 6px 14px 14px;
-    padding: 14px 8px 10px; box-shadow: var(--fb-shadow);
-    border-top: 2px dashed rgba(90, 68, 41, 0.35);
+    position: relative; margin-top: 30px; padding: 16px 10px 12px;
+    border-radius: 2px 2px 10px 10px; box-shadow: var(--fb-shadow);
+    /* 양옆 8px은 살짝 어둡게 → 봉투 옆면이 접힌 것처럼 */
+    background:
+        linear-gradient(90deg, rgba(0,0,0,0.10) 0 8px, transparent 8px calc(100% - 8px), rgba(0,0,0,0.10) calc(100% - 8px)),
+        var(--fb-bag);
+}
+/* 손잡이: 위가 둥근 끈 (봉투 위로 튀어나옴) */
+.fb-tray::before {
+    content: ""; position: absolute; left: 50%; top: -28px; transform: translateX(-50%);
+    width: min(46%, 110px); height: 34px; box-sizing: border-box;
+    border: 4px solid var(--fb-bag-handle); border-bottom: none; border-radius: 60px 60px 0 0;
+}
+/* 윗단: 종이를 자른 톱니 모양 */
+.fb-tray::after {
+    content: ""; position: absolute; left: 0; right: 0; top: -6px; height: 6px;
+    background:
+        linear-gradient(135deg, transparent 50%, var(--fb-bag-top) 50%) 0 0 / 10px 6px repeat-x,
+        linear-gradient(225deg, transparent 50%, var(--fb-bag-top) 50%) 0 0 / 10px 6px repeat-x;
 }
 .fb-tray .fb-zone-title { color: var(--fb-bag-text); opacity: 0.95; font-weight: 700; }
 /* 봉투 안의 [추천 칸에 모두 넣기] / [완료] 버튼 */
@@ -263,7 +283,7 @@ CSS = """
 .fb-root:not(.fb-mobile) .fb-left { flex: 1; min-width: 0; }
 .fb-root:not(.fb-mobile) .fb-tray { flex: none; width: var(--fb-tray-width); box-sizing: border-box; }
 .fb-root.fb-mobile { gap: 10px; }
-.fb-mobile .fb-tray { padding-top: 10px; }
+.fb-mobile .fb-tray { padding-top: 14px; }
 .fb-mobile .fb-fridge { padding: 8px 8px 4px; }
 .fb-mobile .fb-cavity { grid-template-columns: 1fr 38%; gap: 6px; }
 .fb-mobile .fb-chip { font-size: 0.8rem; padding: 5px 6px; }
