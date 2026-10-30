@@ -96,7 +96,7 @@ def advice(name, unit, events=None, today=None):
     if quantity >= usual:
         return None  # 지금 사는 양이 이미 알맞다.
     avg_wasted = sum(wasted) / wasted_times
-    text = (f"최근 {len(buys)}번 중 {wasted_times}번 버렸어요(평균 {_nice(round(avg_wasted, 1))}{unit}). "
+    text = (f"최근 {len(buys)}번 중 {wasted_times}번 폐기했어요(평균 {_nice(round(avg_wasted, 1))}{unit}). "
             f"하루 {_nice(round(per_day, 1))}{unit}씩 쓰고 기한이 보통 {shelf_days}일이라 "
             f"{_nice(quantity)}{unit} 정도가 알맞아요.")
     return {"quantity": quantity, "text": text}

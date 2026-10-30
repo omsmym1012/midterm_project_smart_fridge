@@ -82,6 +82,7 @@ def render_card(index, pick):
             # 쓰는 냉장고 재료 (임박 재료는 주황색 배지)
             # 쓰고 싶은 재료로 고른 것은 주황색 배지로 강조한다.
             uses = [f":orange-badge[{n}]" if n in pick["picked"] else n for n in pick["uses"]]
+            uses += [f":gray[{n}]" for n in pick["basic"]]  # 냉장고에 있는 기본 양념은 회색으로 뒤에
             st.markdown(f"**냉장고 재료:** {', '.join(uses) or '없음'}")
 
             listed = [m for m in pick["missing"] if shop.find_by_name(shop.load(), m)]
@@ -106,8 +107,6 @@ def render_card(index, pick):
                 st.markdown(step if step[:1].isdigit() else f"- {step}")
             if not recipe["steps"]:
                 st.caption("조리 순서가 없는 레시피예요. 재료만 참고해 주세요.")
-            if pick["basic"]:
-                st.caption(f"기본 양념: {', '.join(pick['basic'])}")
             if pick["source"] == "api":
                 if recipe["parts"]:
                     st.caption(f"재료 전체: {recipe['parts']}")

@@ -38,7 +38,8 @@ REFRESH_DAYS = 7          # 이 기간이 지나면 레시피를 새로 받는�
 RECOMMEND_COUNT = 3       # 보여 줄 요리 개수
 MIN_FRIDGE_MATCH = 2      # "알맞은 레시피" 기준: 냉장고 재료를 이만큼 이상 쓰는 레시피
 
-# 거의 모든 집에 있다고 보고, 부족한 재료로 치지 않는 기본 양념
+# 기본 양념: 다른 재료처럼 냉장고에 없으면 부족한 재료가 된다. (물만 빼고)
+# 다만 냉장고에 있어도 "알맞은 레시피"를 고르는 점수에는 세지 않는다. (간장·소금만 있다고 맞는 요리가 되지 않게)
 BASIC_SEASONINGS = [
     "물", "소금", "설탕", "후추", "후춧가루", "간장", "식용유", "참기름", "들기름", "깨", "참깨",
     "통깨", "식초", "올리고당", "물엿", "요리당", "고춧가루", "다진마늘", "맛술", "미림", "청주",
@@ -278,16 +279,17 @@ def score_recipe(recipe, fridge):
     """레시피 하나를 냉장고 재료와 비교한다.
 
     반환: {"recipe", "uses": [냉장고 재료], "picked": [그중 쓰고 싶은 재료], "soon": [그중 임박 재료],
-           "missing": [부족한 재료], "basic": [기본 양념]}
+           "missing": [부족한 재료], "basic": [냉장고에 있는 기본 양념]}
     """
     uses, picked, soon, missing, basic = [], [], [], [], []
     for ingredient in recipe["ingredients"]:
-        # 기본 양념은 먼저 걸러 낸다. (냉장고에 간장·소금이 있다고 "알맞은 레시피"가 되지 않게)
-        if _is_basic(ingredient):
-            basic.append(ingredient)
-            continue
+        if _norm(ingredient) == "물":
+            continue  # 물은 재료로 치지 않는다.
         found = next((f for f in fridge if _matches(f["name"], ingredient)), None)
-        if found:
+        if found and _is_basic(ingredient):
+            if found["name"] not in basic:
+                basic.append(found["name"])  # 있는 양념: 보여 주기만 하고 점수(uses)에는 안 센다.
+        elif found:
             if found["name"] not in uses:
                 uses.append(found["name"])
                 if found["soon"]:
@@ -333,7 +335,7 @@ def recommend_from_ai(fridge, count, avoid_names=()):
         f"이미 추천한 요리(제외): {', '.join(avoid_names) or '없음'}\n"
         f"꼭 쓰고 싶은 재료를 1개 이상(많을수록 좋음) 쓰고, 냉장고 재료를 최대한 활용하는 요리 {count}개를 골라 주세요.\n"
         "uses는 위 냉장고 재료 이름 중 실제로 쓰는 것만 그대로 적고, "
-        "missing은 더 사야 하는 재료(소금·간장 같은 기본 양념 제외)입니다. "
+        "missing은 냉장고 재료에 없어서 더 사야 하는 재료(소금·간장 같은 양념 포함, 물 제외)입니다. "
         "steps는 짧은 조리 순서 3~6단계입니다.\n"
         "다른 설명 없이 JSON 배열만 답하세요. 예:\n"
         '[{"name": "대파 계란볶음밥", "description": "10분 만에 만드는 볶음밥", '

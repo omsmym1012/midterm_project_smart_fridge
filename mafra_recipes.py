@@ -21,6 +21,7 @@ GRID_BASE, GRID_PARTS, GRID_STEPS = (
     "Grid_20150827000000000226_1", "Grid_20150827000000000227_1", "Grid_20150827000000000228_1"
 )
 PAGE_SIZE = 1000
+SKIP_KINDS = {"양념장"}  # 간장·된장 담그기 같은 장 만들기는 요리 목록에서 뺀다.
 
 
 def fetch(key, grid):
@@ -49,7 +50,7 @@ def convert(base, parts, steps):
         rid = row["RECIPE_ID"]
         items = parts_by.get(rid, [])
         names = list(dict.fromkeys(p["IRDNT_NM"].strip() for p in items if p["IRDNT_NM"].strip()))
-        if not names or not steps_by.get(rid):
+        if not names or not steps_by.get(rid) or row["TY_NM"] in SKIP_KINDS:
             continue
         recipes.append({
             "id": f"m{rid}",  # 식품안전나라 레시피 번호와 겹치지 않게

@@ -10,7 +10,9 @@
     }
 
 - source: 어디서 왔는지 ("used" 다 쓴 재료 / "expired" 기한 지난 재료 / "soon" 기한 임박 재료 / "manual" 직접 추가 / "recipe" 요리 추천)
-- checked: "샀어요" 체크 여부
+- checked: 장바구니에서 체크한(담은) 것. [구매]를 누르기 전까지는 아직 산 게 아니다.
+- bought: [구매]를 누른 것 → '냉장고 넣기' 목록에 나온다. (없으면 False)
+- expiry: 냉장고 넣기에 미리 채울 유통기한 (새 재료 봉투에서 끌어 온 재료만, 없으면 없음)
 - advice: 구매 적정량 추천 이유 한 줄 (자주 버린 재료면 수량을 추천값으로 넣고 이유를 남긴다. 없으면 없음)
 - online: 인터넷으로 살 재료인지 (장바구니에 남겨 두고 🌐 표시, 인터넷 구매 목록에도 보인다. 없으면 False)
 - handled: 추천 목록에서 이미 [담기]나 [안 살래요]를 누른 항목.
@@ -93,7 +95,7 @@ def add_item(data, name, quantity, unit, source=SOURCE_MANUAL, dish=None):
     )
     save(data)
     if tip:
-        return True, f"'{name}'을(를) {fridge_store.format_quantity(quantity, unit)} 담았어요. (자주 버려서 적정량으로 줄였어요)"
+        return True, f"'{name}'을(를) {fridge_store.format_quantity(quantity, unit)} 담았어요. (자주 폐기해서 적정량으로 줄였어요)"
     return True, f"'{name}'을(를) 장바구니에 담았어요."
 
 
@@ -128,12 +130,43 @@ def remove_items(data, item_ids):
 
 
 def checked_items(data):
-    return [item for item in data["items"] if item["checked"]]
+    """장바구니에서 체크한(담은) 것 중 아직 [구매]하지 않은 것"""
+    return [item for item in data["items"] if item["checked"] and not item.get("bought")]
+
+
+def bought_items(data):
+    """[구매]를 눌러 '냉장고 넣기'에 나오는 것"""
+    return [item for item in data["items"] if item.get("bought")]
 
 
 def unchecked_count(data):
-    """아직 안 산 항목 개수 (사이드바 메뉴에 표시)"""
-    return sum(1 for item in data["items"] if not item["checked"])
+    """아직 사지 않은 항목 개수 (아래 메뉴의 '장보기 3' 등에 표시)"""
+    return sum(1 for item in data["items"] if not item.get("bought"))
+
+
+def buy_checked(data):
+    """[구매]: 체크한(담은) 재료를 산 것으로 바꾼다. 반환: 바꾼 개수"""
+    picked = checked_items(data)
+    for item in picked:
+        item["bought"] = True
+    save(data)
+    return len(picked)
+
+
+def add_bought(data, name, quantity, unit, expiry=None):
+    """새 재료 봉투에서 끌어 온 재료를 '냉장고 넣기' 목록(산 것)에 넣는다. 같은 이름이 있으면 그 줄을 산 것으로 바꾼다."""
+    same = find_by_name(data, name)
+    if same:
+        same["bought"] = True
+        if expiry:
+            same["expiry"] = expiry
+    else:
+        data["items"].append({
+            "id": uuid.uuid4().hex, "name": name, "quantity": quantity, "unit": unit, "source": SOURCE_MANUAL,
+            "checked": True, "bought": True, "added_at": datetime.now().isoformat(timespec="seconds"),
+            **({"expiry": expiry} if expiry else {}),
+        })
+    save(data)
 
 
 # ---------------------------------------------------------------

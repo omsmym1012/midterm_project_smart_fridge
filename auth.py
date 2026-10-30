@@ -17,13 +17,24 @@ STORE_KEY = "ft_login"  # 브라우저 저장소에 쓰는 이름
 # 보이지 않는 작은 컴포넌트: 토큰을 저장/삭제하고, 처음 한 번 저장된 토큰을 Python에 알려 준다.
 _JS = """
 export default function (component) {
-    const { data, setStateValue } = component;
+    const { data, setTriggerValue } = component;
+    let token = "";
     try {
         if (data.save) localStorage.setItem("%s", data.save);
         if (data.clear) localStorage.removeItem("%s");
-        if (!data.checked) setStateValue("token", localStorage.getItem("%s") || "");
-    } catch (e) {
-        if (!data.checked) setStateValue("token", "");  // 저장소를 못 쓰는 브라우저면 그냥 로그인 화면
+        token = localStorage.getItem("%s") || "";
+    } catch (e) {}  // 저장소를 못 쓰는 브라우저면 그냥 로그인 화면
+    // 아직 확인 전이면 저장된 토큰을 Python에 알린다. (한 번만 보내는 신호라 같은 값이어도 매번 전달된다)
+    // 페이지가 막 열리는 중이면 신호가 빠질 때가 있어서, 확인될 때까지 1.5초마다 다시 보낸다. (최대 5번)
+    window.__ftAuthChecked = data.checked;
+    if (!data.checked) {
+        setTriggerValue("token", token);
+        let tries = 0;
+        clearInterval(window.__ftAuthRetry);
+        window.__ftAuthRetry = setInterval(() => {
+            if (window.__ftAuthChecked || ++tries > 5) return clearInterval(window.__ftAuthRetry);
+            setTriggerValue("token", token);
+        }, 1500);
     }
 }
 """ % (STORE_KEY, STORE_KEY, STORE_KEY)

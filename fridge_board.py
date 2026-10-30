@@ -402,14 +402,21 @@ export default function (component) {
         btn.addEventListener("click", () => setTriggerValue(trigger, Date.now()));
         return btn;
     }
-    if (newIds.size && !data.pickOnly) {
+    // 장보기 화면(문이 닫혀 냉장고 밖을 감춘 상태)에서는 냉장고 칸에 넣을 수 없다. 넣기 버튼도 없음
+    //   다시 사기·장바구니 탭: 봉투는 보기만 (끌 수 없음)
+    //   냉장고 넣기 탭(bagToPut): 끌어서 문(냉장고 넣기 목록) 위에 놓으면 그 목록으로 옮긴다.
+    const doorClosed = !!data.hideOutside;
+    const bagToPut = doorClosed && !!data.bagToPut;
+    if (doorClosed && inTray) tray.insertBefore(el("div", "fb-new-bar",
+        bagToPut ? "끌어서 냉장고 넣기 목록으로 옮길 수 있어요" : "냉장고 화면에서 넣을 수 있어요"), lists.tray);
+    if (newIds.size && !data.pickOnly && !doorClosed) {
         tray.insertBefore(el("div", "fb-new-bar", "새로 넣은 재료 " + newIds.size + "개"), lists.tray);
         // [완료]: 표시만 지우기 / [취소]: 방금 넣은 재료를 다시 봉투로
         const row = el("div", "fb-tray-btns");
         row.append(trayButton("완료", "done"), trayButton("취소", "undo", "fb-secondary"));
         tray.insertBefore(row, lists.tray);
     }
-    if (inTray && !data.pickOnly) tray.insertBefore(trayButton("추천 칸에 모두 넣기", "autoplace"), lists.tray);
+    if (inTray && !data.pickOnly && !doorClosed) tray.insertBefore(trayButton("추천 칸에 모두 넣기", "autoplace"), lists.tray);
 
     function setRecommend(zoneId, on) {
         zoneBoxes.forEach((box) => box.classList.toggle("fb-recommend", on && box.dataset.zone === zoneId));
@@ -449,7 +456,7 @@ export default function (component) {
     // 끌기: 포인터 이벤트를 써서 마우스와 터치에서 똑같이 동작하게 한다.
     function startDrag(event, chip, item) {
         lastPointer = event.pointerType;
-        if (event.button !== 0) return;
+        if (event.button !== 0 || (doorClosed && !bagToPut)) return;  // 다시 사기·장바구니 탭에서는 끌 수 없다.
         event.preventDefault();
         // 손가락으로 길게 누르면(움직이지 않고) 이 재료 하나만 사용하는 팝업을 연다. (휴대폰의 우클릭)
         let longPressed = false;
@@ -483,7 +490,7 @@ export default function (component) {
             const base = root.getBoundingClientRect();
             ghost.style.left = e.clientX - base.left - offsetX + "px";
             ghost.style.top = e.clientY - base.top - offsetY + "px";
-            const target = zoneAt(e.clientX, e.clientY) || null;
+            const target = doorClosed ? null : zoneAt(e.clientX, e.clientY) || null;  // 문이 닫혀 있으면 칸 강조 없음
             if (target !== over) {
                 if (over) over.classList.remove("fb-over");
                 if (target) target.classList.add("fb-over");
@@ -512,6 +519,16 @@ export default function (component) {
             }
             ghost.remove();
 
+            if (doorClosed) {
+                // 냉장고 넣기 탭: 문(왼쪽) 위에 놓았으면 냉장고 넣기 목록으로. 칸에는 넣지 않는다.
+                const r = left.getBoundingClientRect();
+                const onDoor = e.clientX >= r.left && e.clientX <= r.right && e.clientY >= r.top && e.clientY <= r.bottom;
+                if (e.type === "pointerup" && onDoor) {
+                    chip.remove();
+                    setTriggerValue("toput", item.id);
+                }
+                return;
+            }
             const target = e.type === "pointerup" ? zoneAt(e.clientX, e.clientY) : null;
             if (!target) return;
             // 놓은 위치 바로 아래에 있는 카드 앞에 끼워 넣는다. (같은 칸이면 순서 바꾸기, 없으면 맨 끝)
@@ -576,7 +593,7 @@ def _board_data(items):
 
 def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mobile=False, on_close=None,
                  hide_outside=False, new_ids=(), on_autoplace=None, on_done=None, on_undo=None,
-                 on_fill=None, pick_only=False, on_detail=None):
+                 on_fill=None, pick_only=False, on_detail=None, bag_to_put=False, on_to_put=None):
     """냉장고 칸 화면을 그린다.
 
     재료를 다른 칸에 놓으면 on_move, 누르면 on_toggle이 화면을 다시 그리기 전에 먼저 실행된다.
@@ -591,6 +608,7 @@ def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mob
     on_autoplace: 봉투의 [추천 칸에 모두 넣기]를 눌렀을 때, on_done: [완료], on_undo: [취소]를 눌렀을 때 실행
     on_fill: 칸 이름을 더블클릭했을 때 실행 (st.session_state[key]["fill"]["zone"]에 그 칸 id)
     on_detail: 재료를 우클릭(휴대폰은 길게 누르기)했을 때 실행 (st.session_state[key]["detail"]에 재료 id)
+    bag_to_put=True: (장보기 냉장고 넣기 탭) 봉투 재료를 문 위에 놓으면 on_to_put 실행 (st.session_state[key]["toput"]에 재료 id)
     pick_only=True: 누르기(고르기)만 된다. 끌어 옮기기·봉투 버튼·손잡이·칸 이름 더블클릭은 끈다. (요리 추천에서 재료 고르기)
     """
     data = _board_data(items)
@@ -603,11 +621,12 @@ def fridge_board(items, key, on_move, on_toggle, selected=(), animate=False, mob
     data["hideOutside"] = hide_outside
     data["newIds"] = list(new_ids)
     data["pickOnly"] = pick_only
+    data["bagToPut"] = bag_to_put
     _board(
         data=data, key=key,
         on_move_change=on_move, on_toggle_change=on_toggle,
         on_close_change=on_close or (lambda: None),
         on_autoplace_change=on_autoplace or (lambda: None), on_done_change=on_done or (lambda: None),
         on_undo_change=on_undo or (lambda: None), on_fill_change=on_fill or (lambda: None),
-        on_detail_change=on_detail or (lambda: None),
+        on_detail_change=on_detail or (lambda: None), on_toput_change=on_to_put or (lambda: None),
     )

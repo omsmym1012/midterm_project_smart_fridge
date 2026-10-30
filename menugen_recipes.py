@@ -23,6 +23,12 @@ OUT_FILE = ROOT / "recipes_menugen.json"
 PAGES_FILE = ROOT / "data" / "menugen_pages.json"  # 받는 중인 페이지 (data/라 커밋되지 않음)
 API_URL = "https://apis.data.go.kr/1390803/AgriFood/FdFoodCkryImage1/getKoreanFoodFdFoodCkryImageList1"
 PAGE_SIZE = 20  # API가 허용하는 최대
+# 요리가 아닌 분류는 뺀다. (식재료·과일·과자·음료·술·양념·통조림 등 사 먹거나 그대로 먹는 것)
+SKIP_KINDS = {
+    "채소류", "과일류", "과채류", "견과 및 종실류", "감자 및 전분류", "난류", "두류", "해조류",
+    "과자류", "빵류", "떡류", "당류", "우유 및 유제품류", "차류", "기타 음료류", "주류",
+    "양념류", "소스류", "조미로류", "유지류", "가공품류", "조리가공식품류", "어패류 및 수산물가공품",
+}
 
 
 def fetch_page(key, page):
@@ -76,6 +82,7 @@ if __name__ == "__main__":
         PAGES_FILE.parent.mkdir(exist_ok=True)
         PAGES_FILE.write_text(json.dumps(pages, ensure_ascii=False), encoding="utf-8")
     items = [item for page in pages.values() for item in page]
+    items = [item for item in items if item["fd_Grupp_Nm"] not in SKIP_KINDS]
     recipes = list({r["id"]: r for r in map(convert, items) if r["ingredients"]}.values())
     OUT_FILE.write_text(json.dumps(recipes, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     print(f"\n{len(recipes)}개 저장: {OUT_FILE.name}")

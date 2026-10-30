@@ -89,7 +89,7 @@ state.setdefault("bulk_rebuy", None)    # 사용·소진·폐기로 없어진 �
 # 새로고침해도 열려 있던 팝업이 다시 뜨도록 주소 끝 ?popup=add|use|put (고른 재료는 &pick=id,id)에 적어 둔다.
 # 새로고침하면 화면 기억이 비므로, 처음 실행할 때 한 번만 주소를 읽는다.
 # 팝업 안에 적던 내용은 사용자별 저장소에 임시 저장해 두었다가 다시 채운다. (ui.save_draft / restore_draft)
-POPUP_FLAGS = {"add": "add_open", "use": "multi_open", "put": "put_ask", "receipt": "receipt_open", "shopadd": "shop_add_open"}
+POPUP_FLAGS = {"add": "add_open", "use": "multi_open", "receipt": "receipt_open", "shopadd": "shop_add_open"}
 if "popup_restored" not in state:
     state.popup_restored = True
     if st.query_params.get("pick"):
@@ -143,14 +143,15 @@ def summary_badges():
         item for item in groups[store.STATUS_OK]
         if store.days_left(store.earliest_batch(item)["expiry"]) <= WEEK_DAYS
     ])
+    # 짧게 쓰고, 묶음마다 <span>으로 감싸 줄이 바뀌어도 묶음 사이에서만 바뀌게 한다. (ui.py .ft-summary span)
     parts = []
     if expired:
-        parts.append(f"<b>기한 지난 재료 {expired}개</b>")
+        parts.append(f"<span><b>기한 지남 {expired}개</b></span>")
     if soon:
-        parts.append(f"{store.SOON_DAYS}일 안에 먹을 재료 {soon}개")
+        parts.append(f"<span>{store.SOON_DAYS}일 안에 먹기 {soon}개</span>")
     if week:
-        parts.append(f"일주일 안에 먹을 재료 {week}개")
-    text = ", ".join(parts) if parts else "급하게 먹어야 할 재료가 없어요."
+        parts.append(f"<span>일주일 안에 먹기 {week}개</span>")
+    text = " · ".join(parts) if parts else "급하게 먹어야 할 재료가 없어요."
     return f'<p class="ft-summary">{text}</p>'
 
 
@@ -316,12 +317,7 @@ def add_dialog():
     col_qty.number_input("수량", min_value=0.1, step=1.0, format="%g", key="add_quantity")
     col_unit.selectbox("단위", unit_options, key="add_unit", on_change=on_unit_change)
 
-    col_add, col_receipt = st.columns([1, 2], vertical_alignment="center")
-    col_add.button("추가", type="primary", on_click=on_add_click, width="stretch")
-    # 장 본 재료가 많으면 영수증으로 한 번에 넣는 게 편하다. (이 팝업을 닫고 영수증 팝업을 연다)
-    if col_receipt.button("🧾 영수증으로 한 번에 추가", type="tertiary"):
-        go_receipt()
-        st.rerun()
+    st.button("추가", type="primary", on_click=on_add_click, width="stretch")
 
     # 단위가 달라 따로 추가되는 경우의 확인 창
     if state.add_confirm:
@@ -424,7 +420,7 @@ def use_body(chosen, from_selection):
     다 쓰거나 버려서 없어진 재료는 마지막에 장바구니에 담을지 한 번에 묻는다.
     """
     if not chosen:
-        st.info("고른 재료가 없어요." if from_selection else "이미 다 쓰거나 버린 재료예요.")
+        st.info("고른 재료가 없어요." if from_selection else "이미 소진하거나 폐기한 재료예요.")
         return
     plans = {}
     for item in chosen:
@@ -456,7 +452,7 @@ def use_body(chosen, from_selection):
                 ) if expired else None) or ACT_USE  # 폐기는 기한 지난 재료만
             if act == ACT_DISCARD:
                 gone_qty = sum(b["quantity"] for b in expired)
-                st.caption(f"기한 지난 {store.format_quantity(gone_qty, item['unit'])}을(를) 버려요.")
+                st.caption(f"기한 지난 {store.format_quantity(gone_qty, item['unit'])}을(를) 폐기해요.")
             if act != ACT_USE:
                 amount = 0.0
             plans[item["id"]] = (item, act, amount, expired)
@@ -497,12 +493,12 @@ def close_bulk_rebuy():
     state.bulk_rebuy = None
 
 
-@st.dialog("🛒 장보기", on_dismiss=close_bulk_rebuy)
+@st.dialog("🛒 장바구니에 담을까요?", on_dismiss=close_bulk_rebuy)
 def bulk_rebuy_dialog():
     """사용·소진·폐기로 없어진 재료들을 장바구니에 담을지 한 번에 묻는다."""
     info = state.bulk_rebuy
     st.write(info["message"])
-    st.markdown("**다 쓰거나 버린 재료를 장바구니에 담을까요?**")
+    st.markdown("**소진하거나 폐기한 재료**")
     picks = []
     for gone in info["items"]:
         col_check, col_qty = st.columns([1.4, 1], vertical_alignment="center")
@@ -515,8 +511,8 @@ def bulk_rebuy_dialog():
     ui.save_draft()
 
     col_yes, col_no = st.columns(2)
-    add = col_yes.button("추가", type="primary", width="stretch", disabled=not picks)
-    skip = col_no.button("추가 안 함", width="stretch")
+    add = col_yes.button("담기", type="primary", width="stretch", disabled=not picks)
+    skip = col_no.button("안 담기", width="stretch")
     if add or skip:
         data = shop.load()
         added, already = [], []
@@ -693,6 +689,22 @@ def on_close_door():
     state.home_view = VIEW_DOOR
 
 
+def on_to_put():
+    """(장보기 냉장고 넣기 탭) 봉투 재료를 문 위에 놓으면 봉투에서 빼고 냉장고 넣기 목록으로 옮긴다."""
+    item_id = (state.get(BOARD_KEY) or {}).get("toput")
+    all_items = store.load_items()
+    item = next((i for i in all_items if i["id"] == item_id and i.get("zone") not in store.ZONES), None)
+    if item is None:
+        return
+    first = store.earliest_batch(item)
+    shop.add_bought(shop.load(), item["name"], store.total_quantity(item), item["unit"], first["expiry"])
+    store.delete_item(all_items, item_id)
+
+
+# 장보기의 '냉장고 넣기' 탭을 보고 있으면 봉투 재료를 그 목록으로 끌어 옮길 수 있다.
+BAG_TO_PUT = DOOR_CLOSED and shopping_panel.active_tab() == shopping_panel.TAB_PUT
+
+
 # 문 모양(열림/닫힘). 바뀔 때마다 CSS transition으로 부드럽게 돈다.
 st.html(shopping_panel.door_css(
     DOOR_CLOSED, FRIDGE_HEIGHT_MOBILE if MOBILE else FRIDGE_HEIGHT, MOBILE, state.get("page_changed", False),
@@ -705,6 +717,7 @@ with st.container(key="fridge_stage"):
         # 다른 페이지에서 냉장고(문 열린 상태)로 들어왔을 때만 문 열림 효과
         animate=state.get("page_changed", False) and not DOOR_CLOSED, mobile=MOBILE,
         hide_outside=DOOR_CLOSED,  # 문이 닫히면(장보기) 냉장고 밖(실온)은 안 보이게
+        bag_to_put=BAG_TO_PUT, on_to_put=on_to_put,
         new_ids=new_ids, on_autoplace=on_autoplace, on_done=on_done, on_undo=on_undo, on_fill=on_fill, on_detail=on_detail,
     )
     door = st.container(key="fridge_door", gap="small")

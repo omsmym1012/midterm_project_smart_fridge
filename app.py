@@ -28,18 +28,19 @@ st.set_page_config(
 ui.apply_style(mobile)
 ui.watch()
 
+# st.Page: 페이지 하나. url_path를 정해 두면 제목(개수)이 바뀌어도 같은 페이지로 인식된다.
+fridge_page = st.Page("views/fridge.py", title="냉장고", icon="🧊", url_path="fridge", default=True)
+recipe_page = st.Page("views/recipe.py", title="요리 추천", icon="🍳", url_path="recipe")
+
+# st.navigation: 왼쪽 사이드바에 메뉴를 만들고, 주소(/recipe 등)에 맞는 페이지를 고른다.
+# 로그인 화면보다 먼저 불러야 새로고침해도 보던 페이지가 남는다. 로그인 전에는 메뉴를 숨긴다.
+page = st.navigation([fridge_page, recipe_page], position="sidebar" if st.session_state.get("user") else "hidden")
+
 # 로그인하지 않았으면 로그인 화면만 보여 주고 멈춘다. 로그인하면 그 사람 냉장고만 읽고 쓴다. (auth.py, storage.py)
 user = auth.require_login()
 
 # 아직 안 산 항목 개수 (휴대폰 아래 메뉴의 "장보기 3"에 쓴다)
 count = shopping_store.unchecked_count(shopping_store.load())
-
-# st.Page: 페이지 하나. url_path를 정해 두면 제목(개수)이 바뀌어도 같은 페이지로 인식된다.
-fridge_page = st.Page("views/fridge.py", title="냉장고", icon="🧊", url_path="fridge", default=True)
-recipe_page = st.Page("views/recipe.py", title="요리 추천", icon="🍳", url_path="recipe")
-
-# st.navigation: 왼쪽 사이드바에 메뉴를 만들고, 고른 페이지를 실행한다.
-page = st.navigation([fridge_page, recipe_page])
 
 # 다른 페이지에 다녀와도 입력해 둔 값이 남게 한다.
 # Streamlit은 화면에 없는 입력칸의 값을 지우는데, 매번 같은 값을 다시 넣어 두면 지우지 않는다.
@@ -57,7 +58,7 @@ if mobile:
     ui.bottom_nav([
         (fridge_page, "냉장고", {"show": "fridge"}),
         (fridge_page, f"장보기{f' {count}' if count else ''}", {"show": "door"}),
-        (recipe_page, "요리", None),
+        (recipe_page, "요리 추천", None),
     ])
 
 

@@ -58,6 +58,18 @@ export default function (component) {
         window.__ftResizeWatch = true;
         window.addEventListener("resize", () => sendWidth());
     }
+
+    // 검색칸에서 목록에 없는 글자를 치면 Streamlit이 "Add: 김치 볶음밥"(영어)을 보여 준다. → "🔍 김치 볶음밥 찾기"
+    if (!window.__ftAddWatch) {
+        window.__ftAddWatch = new MutationObserver(() => {
+            document.querySelectorAll('[role="option"]').forEach((option) => {
+                const leaf = [...option.querySelectorAll("*")].concat(option).find(
+                    (node) => node.childElementCount === 0 && node.textContent.startsWith("Add: "));
+                if (leaf) leaf.textContent = "🔍 " + leaf.textContent.slice(5) + " 찾기";
+            });
+        });
+        window.__ftAddWatch.observe(document.body, { childList: true, subtree: true, characterData: true });
+    }
 }
 """
 
@@ -109,10 +121,14 @@ h1 { font-size: 1.6rem !important; }
 /* 맨 위 요약 문장: 보조 글자색, 기한 지난 재료만 빨간 굵은 글씨 */
 .ft-summary { color: var(--ft-sub); margin: 0; }
 .ft-summary b { color: var(--ft-expired); }
+.ft-summary span { white-space: nowrap; }  /* 묶음 중간(단어 가운데)에서 줄이 바뀌지 않게 */
 .ft-summary-cart b { color: inherit; }
 /* 다크 모드의 밝은 파랑 버튼에는 어두운 글자 (흰 글자는 잘 안 읽힌다) */
-html[data-ft="dark"] button[data-testid="stBaseButton-primary"],
-html[data-ft="dark"] button[data-testid="stBaseButton-primary"] p { color: #0d1420 !important; }
+html[data-ft="dark"] button[data-testid="stBaseButton-primary"]:not(:disabled),
+html[data-ft="dark"] button[data-testid="stBaseButton-primary"]:not(:disabled) p { color: #0d1420 !important; }
+/* 누를 수 없는(비활성) 파랑 버튼은 배경이 어두워지므로 흐린 밝은 글자로 */
+html[data-ft="dark"] button[data-testid="stBaseButton-primary"]:disabled,
+html[data-ft="dark"] button[data-testid="stBaseButton-primary"]:disabled p { color: rgba(228, 234, 240, 0.45) !important; }
 .st-key-ui_watch { display: none; }
 /* 머리 영역: 높이 고정, 넘치는 부분은 감춘다(스크롤 막대 없이) */
 .st-key-page_head { overflow: hidden !important; padding-top: 4px; box-sizing: border-box; }
@@ -211,7 +227,7 @@ DRAFT_FILE = Path(__file__).parent / "data" / "draft.json"  # 로그인 전(테�
 DRAFT_PREFIXES = ("add_", "multi_amt_", "multi_act_", "bulk_", "single_id", "receipt_draft",
                   "shop_name", "shop_quantity", "shop_unit")  # shop_: 장바구니 직접 추가
 DRAFT_SKIP = ("add_msg",)  # 한 번 보여 주고 끝나는 알림은 남기지 않는다.
-POPUP_KEYS = ("add_open", "multi_open", "single_id", "receipt_open", "put_ask", "bulk_rebuy", "shop_add_open")
+POPUP_KEYS = ("add_open", "multi_open", "single_id", "receipt_open", "bulk_rebuy", "shop_add_open")
 
 
 def _encode(value):
