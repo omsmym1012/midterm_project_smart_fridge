@@ -29,7 +29,8 @@ def fetch_page(key, page):
     """page번째 20개. 반환: (요리 목록, 전체 개수). 실패하면 RuntimeError"""
     params = {"serviceKey": key, "service_Type": "json", "page_No": page, "Page_Size": PAGE_SIZE, "food_Name": ""}
     text = requests.get(API_URL, params=params, timeout=30).text
-    body = json.loads(re.sub(r",\s*,", ",", text))["response"]  # 응답에 ", ,"가 섞여 오는 경우가 있다.
+    # 응답에 ", ,"나 줄바꿈 같은 제어 문자가 섞여 오는 경우가 있다. (strict=False: 제어 문자 허용)
+    body = json.loads(re.sub(r",\s*,", ",", text), strict=False)["response"]
     if body.get("result_Code") != "200":
         raise RuntimeError(body.get("resultMsg") or body.get("result_Msg") or "알 수 없는 오류")
     return body["list"], int(body["total_Count"])

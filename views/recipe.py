@@ -40,14 +40,19 @@ if "flash" in st.session_state:
     else:
         st.warning(message)
 
-def add_missing(names):
-    """고른 부족한 재료를 장보기 리스트에 담는다."""
+def add_missing(names, dish, listed=()):
+    """고른 부족한 재료를 장보기 리스트에 담는다. 장바구니에서 요리(dish)별로 묶여 보인다.
+
+    listed: 이 요리에 필요한데 이미 장바구니에 있는 재료. 담지는 않고 '이 요리에도 써요' 표시만 더한다.
+    """
     data = shop.load()
+    for name in listed:
+        shop.add_item(data, name, 1.0, "", shop.SOURCE_RECIPE, dish=dish)  # 이미 있어서 요리 이름만 더해진다.
     added, skipped = [], []
     with st.spinner("장바구니에 담는 중..."):
         for name in names:
             unit = classifier.classify(name)["unit"]  # 재료에 맞는 단위 (목록·캐시·AI)
-            ok, _ = shop.add_item(data, name, 1.0, unit, shop.SOURCE_RECIPE)
+            ok, _ = shop.add_item(data, name, 1.0, unit, shop.SOURCE_RECIPE, dish=dish)
             (added if ok else skipped).append(name)
     message = f"🛒 장바구니에 담았어요: {', '.join(added)}" if added else ""
     if skipped:
@@ -92,7 +97,7 @@ def render_card(index, pick):
                         key=f"recipe_missing_{index}_{recipe['name']}", label_visibility="collapsed",
                     ) or []
                     if st.button("장바구니에 담기", key=f"recipe_add_{index}_{recipe['name']}", disabled=not chosen):
-                        add_missing(chosen)
+                        add_missing(chosen, recipe["name"], listed)
                 else:
                     st.caption("🛒 모두 장바구니에 있어요.")
 

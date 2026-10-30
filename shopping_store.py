@@ -62,12 +62,18 @@ def find_by_name(data, name):
     return None
 
 
-def add_item(data, name, quantity, unit, source=SOURCE_MANUAL):
+def add_item(data, name, quantity, unit, source=SOURCE_MANUAL, dish=None):
     """장보기 항목을 추가한다. 같은 이름이 이미 있으면 추가하지 않고 알려 준다.
 
     자주 버린 재료면 수량을 적정량 추천값으로 바꿔 넣고 이유(advice)를 남긴다. (usage_log.advice)
+    dish: 요리 추천에서 담았으면 그 요리 이름. 장바구니에서 요리별로 묶어 보여 준다. ("dishes" 목록)
+          이미 있는 재료여도 요리 이름은 더해 둔다. (예: 두부 ← 된장찌개, 순두부찌개)
     """
-    if find_by_name(data, name):
+    same = find_by_name(data, name)
+    if same:
+        if dish and dish not in same.setdefault("dishes", []):
+            same["dishes"].append(dish)
+            save(data)
         return False, f"'{name}'은(는) 이미 장바구니에 있어요."
     tip = usage_log.advice(name, unit)
     if tip:
@@ -82,6 +88,7 @@ def add_item(data, name, quantity, unit, source=SOURCE_MANUAL):
             "checked": False,
             "added_at": datetime.now().isoformat(timespec="seconds"),
             **({"advice": tip["text"]} if tip else {}),
+            **({"dishes": [dish]} if dish else {}),
         }
     )
     save(data)

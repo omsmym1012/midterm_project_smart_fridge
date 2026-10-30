@@ -372,11 +372,20 @@ def render(head, door, mobile, show_head):
             )
 
             # 안 산 재료를 위에, 산(체크한) 재료를 아래에 둔다. 두 묶음 사이에는 구분선
+            # 안 산 재료는 요리별로 묶는다: 직접 담은 재료 먼저, 그다음 요리 추천에서 담은 요리마다 제목(🍳 요리 이름)
+            # 두 요리에 같이 쓰는 재료는 먼저 담은 요리 묶음에 두고 '○○에도 써요'를 붙인다.
             todo = [item for item in data["items"] if not item["checked"]]
             got = [item for item in data["items"] if item["checked"]]
+            dish_order = list(dict.fromkeys(item["dishes"][0] for item in todo if item.get("dishes")))
+            todo.sort(key=lambda item: dish_order.index(item["dishes"][0]) + 1 if item.get("dishes") else 0)
+            last_dish = None
             for item in todo + got:
                 if got and item is got[0] and todo:
                     st.caption("✔ 산 재료")  # 안 산 재료와 산 재료 사이 구분
+                dish = (item.get("dishes") or [None])[0] if not item["checked"] else None
+                if dish and dish != last_dish:
+                    st.markdown(f"**🍳 {dish}**")
+                last_dish = dish
                 # 한 줄: 이름 | [🌐 담기] | 수량 입력칸 | 단위(고정) | 체크박스(산 재료면 v) | 삭제
                 if MOBILE:
                     # 휴대폰: 이름 아래에 [🌐 담기] | 수량 | 단위 | 체크 | 🗑
@@ -422,6 +431,8 @@ def render(head, door, mobile, show_head):
                     finish(True, f"'{item['name']}'을(를) 장바구니에서 뺐어요.")
                 if item.get("advice") and not item["checked"]:
                     st.caption(f"🧮 {item['advice']}")  # 구매 적정량 추천 이유 (줄 아래에 한 줄로)
+                if len(item.get("dishes", [])) > 1 and not item["checked"]:
+                    st.caption(f"🍳 {', '.join(item['dishes'][1:])}에도 써요")
 
 
             # ---------------------------------------------------------------
