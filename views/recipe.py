@@ -229,7 +229,8 @@ with tab_dish:
     if recipes:
         by_id = {r["id"]: r for r in recipes}
         dish_id = st.selectbox(
-            "만들고 싶은 요리", sorted(by_id, key=lambda i: by_id[i]["name"]), index=None,
+            # 이름이 짧은 요리 먼저: '된장찌개'를 찾으면 그냥 된장찌개가 '냉이된장찌개'보다 위에 온다.
+            "만들고 싶은 요리", sorted(by_id, key=lambda i: (len(by_id[i]["name"]), by_id[i]["name"])), index=None,
             format_func=lambda i: f"{by_id[i]['name']} · {by_id[i]['kind']}" if by_id[i]["kind"] else by_id[i]["name"],
             placeholder="요리 이름을 검색해 보세요 (예: 된장찌개)", key="dish_pick",
         )

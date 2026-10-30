@@ -2,6 +2,8 @@
 
 1) 식품안전나라 "조리식품의 레시피 DB"(COOKRCP01)를 한 번에 받아 data/recipes.json에 저장한다.
    (일주일이 지나면 새로 받는다. 받기에 실패하면 예전에 받은 것을 그대로 쓴다.)
+   식품안전나라에는 기본 집밥(그냥 된장찌개 등)이 없어서, 농식품정보원 레시피(recipes_mafra.json,
+   mafra_recipes.py로 미리 받아 둔 파일)도 함께 쓴다.
 2) 냉장고 재료와 레시피 재료를 비교해서 점수를 매긴다.
    - 사용자가 고른 "쓰고 싶은 재료"(처음에는 유통기한 3일 이내 재료)를 1개 이상 쓰는 레시피만,
      많이 쓸수록 앞으로
@@ -24,6 +26,7 @@ import ai_client
 import fridge_store
 
 DATA_FILE = Path(__file__).parent / "data" / "recipes.json"  # .gitignore의 data/*.json에 포함
+MAFRA_FILE = Path(__file__).parent / "recipes_mafra.json"     # 농식품정보원 기본 집밥 레시피 (저장소에 포함)
 API_URL = "https://openapi.foodsafetykorea.go.kr/api/{key}/COOKRCP01/json/{start}/{end}"
 PAGE_SIZE = 1000          # API가 한 번에 주는 최대 개수
 REFRESH_DAYS = 7          # 이 기간이 지나면 레시피를 새로 받는다
@@ -53,7 +56,18 @@ class RecipeError(Exception):
 # 레시피 받기 / 저장
 # ---------------------------------------------------------------
 def load_recipes():
-    """저장된 레시피를 돌려준다. 없거나 오래됐으면 API에서 새로 받는다.
+    """식품안전나라 레시피 + 농식품정보원 레시피. 식품안전나라를 못 받아도 농식품정보원 것은 쓴다."""
+    mafra = json.loads(MAFRA_FILE.read_text(encoding="utf-8")) if MAFRA_FILE.exists() else []
+    try:
+        return _load_foodsafety() + mafra
+    except RecipeError:
+        if not mafra:
+            raise
+        return mafra
+
+
+def _load_foodsafety():
+    """저장된 식품안전나라 레시피를 돌려준다. 없거나 오래됐으면 API에서 새로 받는다.
 
     새로 받기에 실패했는데 예전 레시피가 있으면 그것을 쓰고, 아예 없으면 RecipeError를 낸다.
     """
