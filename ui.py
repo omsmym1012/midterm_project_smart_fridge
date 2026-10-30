@@ -22,7 +22,7 @@ MOBILE_WIDTH = 700  # px. 이보다 좁으면 모바일 화면
 
 _WATCH_JS = """
 export default function (component) {
-    const { data, setStateValue, setTriggerValue } = component;
+    const { data, setTriggerValue } = component;
     const html = document.documentElement;
 
     // 앱 배경색이 어두우면 다크 모드로 본다.
@@ -41,16 +41,14 @@ export default function (component) {
         if (app) window.__ftThemeWatch.observe(app, { attributes: true, attributeFilter: ["class"] });
     }
 
-    // 화면 폭이 바뀌어 모바일/PC가 달라졌을 때만 Python에 알린다. (쓸데없이 다시 그리지 않게)
-    window.__ftSend = setStateValue;
+    // 화면 폭으로 정한 모바일/PC가 Python이 아는 값(data.mobile)과 다를 때만 알린다. (쓸데없이 다시 그리지 않게)
+    // 한 번만 보내는 신호(trigger)라 페이지가 막 열릴 때 빠져도, 다음에 다시 그릴 때 또 보낸다.
+    window.__ftSend = setTriggerValue;
+    window.__ftKnownMobile = data.mobile;
     function sendWidth() {
         const mobile = window.innerWidth < data.limit;
-        if (mobile !== window.__ftLastMobile) {
-            window.__ftLastMobile = mobile;
-            if (mobile !== data.mobile) window.__ftSend("mobile", mobile);
-        }
+        if (mobile !== window.__ftKnownMobile) window.__ftSend("mobile", mobile);
     }
-    window.__ftLastMobile = data.mobile;
     sendWidth();
     if (!window.__ftResizeWatch) {
         window.__ftResizeWatch = true;
@@ -207,7 +205,7 @@ def bottom_nav(pages):
 # 화면의 같은 자리에서 시작한다. (페이지를 옮겨도 냉장고가 제자리에 있는 것처럼 보이게)
 # ---------------------------------------------------------------
 HEAD_HEIGHT = 100         # px (PC)
-HEAD_HEIGHT_MOBILE = 96   # px (휴대폰)
+HEAD_HEIGHT_MOBILE = 158  # px (휴대폰: 요약 두 줄 + [기한 지난 것 고르기] + 버튼 줄)
 
 
 def page_head(mobile):

@@ -416,7 +416,7 @@ def render(head, door, mobile, show_head):
                 if MOBILE:
                     # 휴대폰: 이름 아래에 [🌐 담기] | 수량 | 단위 | 체크 | 🗑
                     col_name, col_qty, col_unit, col_chk, col_del = st.columns(
-                        [2.3, 1.3, 0.6, 0.55, 0.6], vertical_alignment="center"
+                        [2.1, 1.3, 0.85, 0.55, 0.6], vertical_alignment="center"
                     )
                     col_web = col_name
                 else:
