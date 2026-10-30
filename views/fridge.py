@@ -676,22 +676,6 @@ def on_close_door():
     state.home_view = VIEW_DOOR
 
 
-def on_move_to():
-    """(휴대폰) 재료를 고르고 칸 이름을 누르면 고른 재료를 모두 그 칸으로 옮긴다. (한 번만 저장)"""
-    zone = ((state.get(BOARD_KEY) or {}).get("moveto") or {}).get("zone")
-    if zone not in store.ZONES or not state.multi_selected:
-        return
-    all_items = store.load_items()
-    for item in all_items:
-        if item["id"] in state.multi_selected:
-            if item.get("zone") not in store.ZONES:
-                item["new"] = True  # 봉투에서 넣은 재료는 [완료]를 누를 때까지 노란색 (끌어 넣을 때와 같게)
-            item["zone"] = zone
-            item.pop("pos", None)  # 그 칸의 맨 뒤(유통기한 순)로
-    store.save_items(all_items)
-    clear_selection()
-
-
 def on_to_put():
     """(장보기 냉장고 넣기 탭) 봉투 재료를 문 위에 놓으면 봉투에서 빼고 냉장고 넣기 목록으로 옮긴다."""
     item_id = (state.get(BOARD_KEY) or {}).get("toput")
@@ -721,7 +705,7 @@ with st.container(key="fridge_stage"):
         # 다른 페이지에서 냉장고(문 열린 상태)로 들어왔을 때만 문 열림 효과
         animate=state.get("page_changed", False) and not DOOR_CLOSED, mobile=MOBILE,
         hide_outside=DOOR_CLOSED,  # 문이 닫히면(장보기) 냉장고 밖(실온)은 안 보이게
-        bag_to_put=BAG_TO_PUT, on_to_put=on_to_put, on_move_to=on_move_to,
+        bag_to_put=BAG_TO_PUT, on_to_put=on_to_put,
         new_ids=new_ids, on_autoplace=on_autoplace, on_done=on_done, on_undo=on_undo, on_fill=on_fill, on_detail=on_detail,
     )
     door = st.container(key="fridge_door", gap="small")

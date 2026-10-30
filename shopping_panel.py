@@ -45,7 +45,7 @@ html[data-ft="dark"] {
     --door-accent: #6E9BFF;
 }
 /* 냉장고 그림과 문을 담는 무대: 문은 이 안에서 냉장고 그림 위에 겹쳐진다. */
-.st-key-fridge_stage { position: relative; }  /* (원근은 문에만 perspective() — 부모에 걸면 휴대폰 떠 있는 봉투가 화면에 고정되지 않는다) */
+.st-key-fridge_stage { position: relative; perspective: 1800px; }
 /* 문: 냉장고 몸체와 같은 자리(맨 위)·같은 크기 */
 .st-key-fridge_door {
     position: absolute !important; top: 0; left: 0; right: 0; z-index: 20;
@@ -61,9 +61,9 @@ html[data-ft="dark"] {
     flex-wrap: nowrap !important;
 }
 @keyframes door-close {
-    0%   { transform: perspective(1800px) rotateY(-100deg); }
-    70%  { transform: perspective(1800px) rotateY(3deg); }
-    100% { transform: perspective(1800px) rotateY(0deg); }
+    0%   { transform: rotateY(-100deg); }
+    70%  { transform: rotateY(3deg); }
+    100% { transform: rotateY(0deg); }
 }
 /* 문 손잡이: 진짜 버튼(누르면 문이 열린다)을 손잡이 모양으로 */
 .st-key-door_handle {
@@ -125,13 +125,13 @@ html[data-ft="dark"] {
 # 닫힘(장보기): 문이 정면. 열림(냉장고): 경첩을 축으로 돌아가 사라진다. 바뀔 때 transition으로 부드럽게.
 DOOR_CLOSED_CSS = """
 .st-key-fridge_door {
-    transform: perspective(1800px) rotateY(0deg); visibility: visible; opacity: 1;
+    transform: rotateY(0deg); visibility: visible; opacity: 1;
     transition: transform 0.85s cubic-bezier(0.3, 0.75, 0.3, 1), opacity 0.3s, visibility 0s;
 }
 """
 DOOR_OPEN_CSS = """
 .st-key-fridge_door {
-    transform: perspective(1800px) rotateY(-100deg); visibility: hidden; opacity: 0; pointer-events: none;
+    transform: rotateY(-100deg); visibility: hidden; opacity: 0; pointer-events: none;
     transition: transform 0.85s cubic-bezier(0.55, 0, 0.35, 1), opacity 0.35s 0.5s, visibility 0s 0.85s;
 }
 """
