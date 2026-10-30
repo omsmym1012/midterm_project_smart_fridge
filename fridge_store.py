@@ -111,8 +111,12 @@ def find_all_by_name(items, name, exclude_id=None):
 
 
 def find_in_fridge_by_name(items, name, unit=None, exclude_id=None):
-    """이름이 같은 재료 하나를 찾는다. unit을 주면 단위까지 같은 재료만 찾는다. 없으면 None."""
-    for item in find_all_by_name(items, name, exclude_id):
+    """이름이 같은 재료 하나를 찾는다. unit을 주면 단위까지 같은 재료만 찾는다. 없으면 None.
+
+    기한이 다 지난 줄(split_expired로 떼어 낸 것)보다 기한이 남은 줄을 먼저 고른다. (새로 산 것을 합칠 곳)
+    """
+    same = find_all_by_name(items, name, exclude_id)
+    for item in sorted(same, key=lambda i: len(expired_batches(i)) == len(i["batches"])):
         if unit is None or item["unit"] == unit:
             return item
     return None
@@ -353,6 +357,28 @@ def expired_batches(item, today=None):
     return [b for b in item["batches"] if expiry_status(b["expiry"], today) == STATUS_EXPIRED]
 
 
+def split_expired(items):
+    """한 재료에 기한 지난 묶음과 남은 묶음이 섞여 있으면 기한 지난 묶음을 새 재료로 떼어 낸다. 바뀌었으면 True
+
+    냉장고 그림에서 두 카드로 보이는 것을 고르기·옮기기·사용·폐기도 따로 할 수 있게 한다.
+    떼어 낸 재료는 원래 재료 바로 앞에 둔다.
+    """
+    changed = False
+    for item in list(items):
+        expired = expired_batches(item) if item["status"] == STATUS_IN_FRIDGE else []
+        if not expired or len(expired) == len(item["batches"]):
+            continue
+        item["batches"] = [b for b in item["batches"] if b not in expired]
+        part = {**item, "id": _new_id(), "batches": expired}
+        if "pos" in item:
+            part["pos"] = item["pos"] - 0.5
+        items.insert(items.index(item), part)
+        changed = True
+    if changed:
+        save_items(items)
+    return changed
+
+
 def soon_batches(item, today=None):
     """재료의 묶음 중 기한이 3일 이내로 남은 것들 (오늘 포함)"""
     return [b for b in item["batches"] if expiry_status(b["expiry"], today) == STATUS_SOON]
@@ -511,3 +537,21 @@ def set_zone(items, item_id, zone):
     item["zone"] = zone
     save_items(items)
     return True
+
+
+if __name__ == "__main__":
+    # 자체 확인: 기한 지난 묶음 떼어 내기 + 새로 산 것은 기한 남은 줄에 합치기 (파일에는 저장하지 않음)
+    from datetime import timedelta
+    from unittest import mock
+
+    day = lambda n: (date.today() + timedelta(days=n)).isoformat()  # noqa: E731
+    test = [{"id": "a", "name": "우유", "unit": "팩", "status": STATUS_IN_FRIDGE, "zone": next(iter(ZONES)), "pos": 0,
+             "batches": [{"id": "b1", "expiry": day(-2), "quantity": 1}, {"id": "b2", "expiry": day(5), "quantity": 2}]}]
+    with mock.patch(__name__ + ".save_items"), mock.patch.object(usage_log, "log"):
+        assert split_expired(test) and not split_expired(test)
+        old, fresh = test
+        assert [b["id"] for b in old["batches"]] == ["b1"] and [b["id"] for b in fresh["batches"]] == ["b2"]
+        assert old["zone"] == fresh["zone"] and old["pos"] < fresh["pos"]
+        add_item(test, "우유", date.today() + timedelta(days=7), 1, "팩")
+        assert len(fresh["batches"]) == 2 and len(old["batches"]) == 1
+    print("ok")

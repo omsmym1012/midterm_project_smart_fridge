@@ -65,6 +65,7 @@ else:
 
 # 화면이 다시 그려질 때마다 파일에서 최신 목록을 읽어 온다.
 items = store.load_items()
+store.split_expired(items)  # 기한 지난 묶음은 따로 떼어 따로 고르고 옮길 수 있게
 
 # 분류 기능이 생기기 전에 넣은 재료가 있으면 한 번만 분류해 둔다.
 for old_item in store.unclassified_items(items):
@@ -88,7 +89,7 @@ state.setdefault("bulk_rebuy", None)    # 사용·소진·폐기로 없어진 �
 # 새로고침해도 열려 있던 팝업이 다시 뜨도록 주소 끝 ?popup=add|use|put (고른 재료는 &pick=id,id)에 적어 둔다.
 # 새로고침하면 화면 기억이 비므로, 처음 실행할 때 한 번만 주소를 읽는다.
 # 팝업 안에 적던 내용은 사용자별 저장소에 임시 저장해 두었다가 다시 채운다. (ui.save_draft / restore_draft)
-POPUP_FLAGS = {"add": "add_open", "use": "multi_open", "put": "put_ask", "receipt": "receipt_open"}
+POPUP_FLAGS = {"add": "add_open", "use": "multi_open", "put": "put_ask", "receipt": "receipt_open", "shopadd": "shop_add_open"}
 if "popup_restored" not in state:
     state.popup_restored = True
     if st.query_params.get("pick"):
@@ -562,12 +563,24 @@ use_label = f"사용 ({picked})" if picked else "사용"
 all_expired = picked > 0 and all(
     store.expired_batches(i) for i in store.fridge_items_sorted(items) if i["id"] in state.multi_selected
 )
+# 기한 지난 재료 (split_expired로 떼어 두어서 재료 하나가 통째로 기한 지남). [기한 지난 재료 고르기]에 쓴다.
+expired_ids = [i["id"] for i in store.fridge_items_sorted(items) if store.expired_batches(i)]
+
+
+def select_expired():
+    """기한 지난 재료를 한 번에 모두 고른다. (고른 뒤 [폐기]로 한 번에 버리기)"""
+    state.multi_selected = list(expired_ids)
+
+
 head = ui.page_head(MOBILE)
 if not DOOR_CLOSED:
     with head:
         if MOBILE:
             # 휴대폰: 요약 한 줄 아래에 버튼 3개를 가로로 (장보기 쪽 머리 영역과 같은 자리)
-            st.markdown(summary_badges(), unsafe_allow_html=True)
+            with st.container(horizontal=True, vertical_alignment="center", gap="small"):
+                st.markdown(summary_badges(), unsafe_allow_html=True, width="content")
+                if expired_ids and not picked:
+                    st.button(f"기한 지난 것 고르기 ({len(expired_ids)})", type="tertiary", on_click=select_expired)
             with st.container(key="row_buttons"):
                 if all_expired:
                     col_add, col_receipt, col_use, col_discard = st.columns([1, 1.1, 0.75, 0.75])
@@ -585,6 +598,9 @@ if not DOOR_CLOSED:
             col_summary.markdown(summary_badges(), unsafe_allow_html=True)
             if picked:
                 col_summary.button(f"✕ 선택 해제 ({picked})", type="tertiary", on_click=clear_selection)
+            elif expired_ids:
+                col_summary.button(f"🗑️ 기한 지난 재료 모두 고르기 ({len(expired_ids)})", type="tertiary",
+                                   on_click=select_expired)
             else:
                 col_summary.caption("재료를 눌러 고르고 [사용]을 누르세요. 우클릭하면 하나만 사용, 끌면 칸 이동.")
             col_add, col_receipt = col_buttons.columns(2, gap="small")

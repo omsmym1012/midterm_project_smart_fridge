@@ -3,8 +3,8 @@
 views/fridge.py가 냉장고 그림 위에 같은 크기의 "문" 컨테이너를 겹쳐 두고, render()로 이 안을 채운다.
 문이 닫히면(장보기) 보이고, 열리면(냉장고) 경첩을 축으로 돌아가며 사라진다.
 
-1) 다시 사기 탭: 소진·폐기한 재료, 기한 지난/임박 재료, 살 때가 된 재료를 골라 한 번에 담기 / 안 살래요
-2) 장바구니 탭   : 장바구니 목록(산 재료 체크, 수량 수정, 삭제) + 직접 추가(이름·수량·단위)
+1) 다시 사기 탭: 소진·폐기한 재료, 기한 지난/임박 재료, 살 때가 된 재료를 골라 한 번에 담기 / 안 담기
+2) 장바구니 탭   : 장바구니 목록(산 재료 체크, 수량 수정, 삭제). 직접 추가는 머리 영역 [＋ 직접 추가] 팝업
 3) 냉장고 넣기 : 체크한 항목의 유통기한을 고르고 한 번에 냉장고에 넣기
 """
 
@@ -14,6 +14,7 @@ import classifier
 import fridge_store
 import receipt_panel
 import shopping_store as shop
+import ui
 
 
 # ---------------------------------------------------------------
@@ -217,7 +218,7 @@ def render(head, door, mobile, show_head):
             #   PC: 오른쪽에 [＋ 직접 추가][🧾 영수증] 한 줄, 그 아래 [냉장고 넣기] ([＋ 재료 추가][🧾 영수증]/[사용] 자리)
             #   휴대폰: 버튼 3개 가로
             # 두 버튼은 문 안의 탭으로 바로 가는 지름길이다.
-            to_cart = lambda: st.session_state.update(goto_tab=TAB_CART)
+            to_cart = lambda: st.session_state.update(shop_add_open=True)  # [＋ 직접 추가] 팝업 열기
             to_put = lambda: st.session_state.update(goto_tab=TAB_PUT)
             put_label = f"냉장고 넣기 ({bought_count})" if bought_count else "냉장고 넣기"
             if MOBILE:
@@ -265,24 +266,40 @@ def render(head, door, mobile, show_head):
             else:
                 # 후보를 한 줄씩: [선택] 이름·이유 | 수량 입력칸(−/＋) | 단위
                 # 수량은 칸을 한 번 눌러 바로 고치거나 −/＋로 바꾼다. 단위는 냉장고에 있던 단위로 고정이다.
-                # 이유별로 묶어서 작은 제목을 붙인다. (candidates는 이미 이 순서로 나온다)
+                # 이유별로 묶어서 제목을 붙이고, 줄마다 색 배지로도 구분한다. (기한 지남·폐기 → 곧 지남 → 다 씀 순서)
+                # 폐기한 재료(다 쓴 기록 중 폐기)는 기한 지난 재료와 같은 묶음에 둔다.
                 GROUP_TITLE = {
-                    shop.SOURCE_EXPIRED: "⏰ 기한이 지났거나 곧 지나요", shop.SOURCE_SOON: "⏰ 기한이 지났거나 곧 지나요",
-                    shop.SOURCE_USED: "🫙 다 쓴 재료",
+                    "expired": "🚫 기한 지남 · 폐기",
+                    "soon": f"⏰ 곧 지나요 ({fridge_store.SOON_DAYS}일 이내)",
+                    "used": "🫙 다 쓴 재료",
                 }
+                ORDER = list(GROUP_TITLE)
+
+                def group_of(candidate):
+                    """반환: (묶음, 배지, 날짜·수량 글자). detail 예: 기한 지남 · 10/27 1팩 / 폐기 · 10/28"""
+                    reason, _, when = candidate["detail"].partition(" · ")
+                    if candidate["kind"] == shop.SOURCE_EXPIRED:
+                        return "expired", ":red-badge[기한 지남]", when
+                    if candidate["kind"] == shop.SOURCE_SOON:
+                        return "soon", ":orange-badge[곧 지남]", when
+                    if reason == "폐기":
+                        return "expired", ":red-badge[폐기]", when
+                    return "used", ":gray-badge[다 씀]", when
+
                 chosen = []
                 last_title = None
-                for candidate in candidates:
-                    title = GROUP_TITLE.get(candidate["kind"])
+                for candidate in sorted(candidates, key=lambda c: ORDER.index(group_of(c)[0])):
+                    group, badge, when = group_of(candidate)
+                    title = GROUP_TITLE[group]
                     if title != last_title:
-                        st.caption(f"**{title}**")
+                        st.markdown(f"**{title}**")
                         last_title = title
                     key = candidate["keys"][0]  # 입력칸 key를 구분하기 위한 값
                     col_chk, col_name, col_qty, col_unit = st.columns([0.5, 3, 1.6, 0.7], vertical_alignment="center")
                     picked = col_chk.checkbox(
                         f"{candidate['name']} 선택", key=f"cand_chk_{key}", label_visibility="collapsed"
                     )
-                    col_name.markdown(f"**{candidate['name']}** :gray[{candidate['detail']}]")
+                    col_name.markdown(f"**{candidate['name']}** {badge} :gray[{when}]")
                     quantity = col_qty.number_input(
                         f"{candidate['name']} 수량", min_value=0.1, value=float(candidate.get("quantity", 1)), step=1.0, format="%g",
                         key=f"cand_qty_{key}", label_visibility="collapsed",
@@ -292,8 +309,8 @@ def render(head, door, mobile, show_head):
                         chosen.append((candidate, quantity))
 
                 with st.container(key="row_buttons_cand"):
-                    col_add, col_skip, _ = st.columns([1.3, 1.6, 0.01 if MOBILE else 2])
-                if col_add.button("고른 재료 담기", type="primary", key="cand_add", disabled=not chosen):
+                    col_add, col_skip, _ = st.columns([1, 1, 0.01 if MOBILE else 2])
+                if col_add.button("담기", type="primary", key="cand_add", disabled=not chosen, width="stretch"):
                     added, already = [], []
                     for candidate, quantity in chosen:
                         ok, _ = shop.add_item(data, candidate["name"], quantity, candidate["unit"], candidate["kind"])
@@ -303,7 +320,7 @@ def render(head, door, mobile, show_head):
                     if already:
                         message += f" (이미 있음: {', '.join(already)})"
                     finish(bool(added), message.strip())
-                if col_skip.button("고른 재료 안 살래요", key="cand_skip", disabled=not chosen):
+                if col_skip.button("안 담기", key="cand_skip", disabled=not chosen, width="stretch"):
                     for candidate, _ in chosen:
                         shop.mark_handled(data, candidate["keys"])
                     finish(True, f"추천에서 뺐어요: {', '.join(c['name'] for c, _ in chosen)}")
@@ -419,55 +436,6 @@ def render(head, door, mobile, show_head):
                         st.markdown(f"{item['name']} {qty}")
 
 
-            # ---------------------------------------------------------------
-            # 3) 직접 추가
-            # 이름을 입력하고 Enter를 누르면 추천 단위를 채워 준다. (냉장고 추가와 같은 방식)
-            # ---------------------------------------------------------------
-            st.markdown("**✏️ 직접 추가**")
-
-            SHOP_ADD_DEFAULTS = {
-                "shop_name": "", "shop_quantity": 1.0, "shop_unit": classifier.DEFAULT_UNIT,
-                "shop_units": classifier.common_units(None),  # 고를 수 있는 단위 (재료 종류에 흔한 단위만)
-            }
-            for k, v in SHOP_ADD_DEFAULTS.items():
-                st.session_state.setdefault(k, v)
-
-
-            def on_shop_name_change():
-                """이름이 바뀌면 추천 단위를 채우고, 고를 수 있는 단위를 그 재료에 흔한 단위로 줄인다."""
-                state = st.session_state
-                name = state.shop_name.strip()
-                if not name:
-                    state.shop_units = classifier.common_units(None)
-                    return
-                with st.spinner(f"'{name}' 단위 추천 중..."):
-                    info = known_info(name)
-                state.shop_units = classifier.common_units(info["category"], info["unit"])
-                state.shop_unit = info["unit"]
-
-
-            def on_shop_add_click():
-                """[담기] 버튼: 직접 입력한 항목을 장보기 리스트에 담는다."""
-                state = st.session_state
-                name = state.shop_name.strip()
-                if not name:
-                    state.flash = (False, "재료 이름을 입력해 주세요.")
-                    return
-                state.flash = shop.add_item(data, name, state.shop_quantity, state.shop_unit, shop.SOURCE_MANUAL)
-                if state.flash[0]:
-                    for k, v in SHOP_ADD_DEFAULTS.items():
-                        state[k] = v
-
-
-            # 메모지 폭이 좁아서 두 줄로: [이름] / [수량] [단위] [담기]
-            with st.container(border=True):
-                st.text_input("이름", key="shop_name", on_change=on_shop_name_change, placeholder="예: 두부")
-                col_qty, col_unit, col_btn = st.columns([1.3, 1.2, 1], vertical_alignment="bottom")
-                col_qty.number_input("수량", min_value=0.1, step=1.0, format="%g", key="shop_quantity")
-                if st.session_state.shop_unit not in st.session_state.shop_units:
-                    st.session_state.shop_unit = st.session_state.shop_units[0]
-                col_unit.selectbox("단위", st.session_state.shop_units, key="shop_unit")
-                col_btn.button("담기", key="shop_add", type="primary", on_click=on_shop_add_click, width="stretch")
 
 
         with tab_put:
@@ -554,4 +522,73 @@ def render(head, door, mobile, show_head):
 
     if st.session_state.get("put_ask"):
         put_ask_dialog()
+
+
+    # ---------------------------------------------------------------
+    # [＋ 직접 추가] 팝업: 머리 영역의 버튼으로 연다. 열린 상태를 shop_add_open에 기억해 둔다.
+    # ---------------------------------------------------------------
+    def close_shop_add():
+        st.session_state.shop_add_open = False
+
+
+    @st.dialog("🛒 장바구니에 직접 추가", on_dismiss=close_shop_add)
+    def shop_add_dialog():
+        """이름을 입력하고 Enter를 누르면 추천 단위를 채워 준다. (냉장고 추가와 같은 방식)"""
+        SHOP_ADD_DEFAULTS = {
+            "shop_name": "", "shop_quantity": 1.0, "shop_unit": classifier.DEFAULT_UNIT,
+            "shop_units": classifier.common_units(None),  # 고를 수 있는 단위 (재료 종류에 흔한 단위만)
+        }
+        for k, v in SHOP_ADD_DEFAULTS.items():
+            st.session_state.setdefault(k, v)
+
+
+        def on_shop_name_change():
+            """이름이 바뀌면 추천 단위를 채우고, 고를 수 있는 단위를 그 재료에 흔한 단위로 줄인다."""
+            state = st.session_state
+            name = state.shop_name.strip()
+            if not name:
+                state.shop_units = classifier.common_units(None)
+                return
+            with st.spinner(f"'{name}' 단위 추천 중..."):
+                info = known_info(name)
+            state.shop_units = classifier.common_units(info["category"], info["unit"])
+            state.shop_unit = info["unit"]
+
+
+        def on_shop_add_click():
+            """[담기] 버튼: 직접 입력한 항목을 장보기 리스트에 담는다."""
+            state = st.session_state
+            name = state.shop_name.strip()
+            if not name:
+                state.shop_add_msg = "재료 이름을 입력해 주세요."
+                return
+            ok, message = shop.add_item(data, name, state.shop_quantity, state.shop_unit, shop.SOURCE_MANUAL)
+            if not ok:
+                state.shop_add_msg = message  # 팝업 안에 보여 준다. (이미 있음 등)
+                return
+            for k, v in SHOP_ADD_DEFAULTS.items():
+                state[k] = v
+            state.shop_add_open = False  # 담았으면 팝업을 닫는다.
+            state.flash = (True, message)
+
+
+        if "shop_add_msg" in st.session_state:
+            st.warning(st.session_state.pop("shop_add_msg"))
+        # 두 줄로: [이름] / [수량] [단위] [담기]
+        with st.container():
+            st.text_input("이름", key="shop_name", on_change=on_shop_name_change, placeholder="예: 두부")
+            col_qty, col_unit, col_btn = st.columns([1.3, 1.2, 1], vertical_alignment="bottom")
+            col_qty.number_input("수량", min_value=0.1, step=1.0, format="%g", key="shop_quantity")
+            if st.session_state.shop_unit not in st.session_state.shop_units:
+                st.session_state.shop_unit = st.session_state.shop_units[0]
+            col_unit.selectbox("단위", st.session_state.shop_units, key="shop_unit")
+            col_btn.button("담기", key="shop_add", type="primary", on_click=on_shop_add_click, width="stretch")
+        if not st.session_state.shop_add_open:
+            st.rerun()  # 담았으면 팝업을 닫고 장바구니를 새로 그린다.
+        ui.save_draft()  # 새로고침해도 적던 내용이 남게
+
+
+    if st.session_state.get("shop_add_open"):
+        shop_add_dialog()
+
 

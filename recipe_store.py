@@ -2,8 +2,10 @@
 
 1) 식품안전나라 "조리식품의 레시피 DB"(COOKRCP01)를 한 번에 받아 data/recipes.json에 저장한다.
    (일주일이 지나면 새로 받는다. 받기에 실패하면 예전에 받은 것을 그대로 쓴다.)
-   식품안전나라에는 기본 집밥(그냥 된장찌개 등)이 없어서, 농식품정보원 레시피(recipes_mafra.json,
-   mafra_recipes.py로 미리 받아 둔 파일)도 함께 쓴다.
+   식품안전나라에는 기본 집밥(그냥 된장찌개 등)이 없어서, 미리 받아 둔 두 파일도 함께 쓴다.
+   - 농식품정보원 레시피 (recipes_mafra.json, mafra_recipes.py)
+   - 농촌진흥청 메뉴젠 요리 (recipes_menugen.json, menugen_recipes.py): 짜장면 등. 재료만 있고 조리 순서는 없다.
+   이름이 같은 요리(띄어쓰기 무시)는 식품안전나라 → 농식품정보원 → 메뉴젠 순으로 하나만 남긴다.
 2) 냉장고 재료와 레시피 재료를 비교해서 점수를 매긴다.
    - 사용자가 고른 "쓰고 싶은 재료"(처음에는 유통기한 3일 이내 재료)를 1개 이상 쓰는 레시피만,
      많이 쓸수록 앞으로
@@ -27,6 +29,9 @@ import fridge_store
 
 DATA_FILE = Path(__file__).parent / "data" / "recipes.json"  # .gitignore의 data/*.json에 포함
 MAFRA_FILE = Path(__file__).parent / "recipes_mafra.json"     # 농식품정보원 기본 집밥 레시피 (저장소에 포함)
+MENUGEN_FILE = Path(__file__).parent / "recipes_menugen.json"  # 메뉴젠 요리, 재료만 (저장소에 포함)
+# 레시피 번호 앞글자로 출처를 구분한다. (m: 농식품정보원, g: 메뉴젠, 숫자: 식품안전나라)
+SOURCE_NAMES = {"m": "농림수산식품교육문화정보원 레시피", "g": "농촌진흥청 메뉴젠(식단관리)"}
 API_URL = "https://openapi.foodsafetykorea.go.kr/api/{key}/COOKRCP01/json/{start}/{end}"
 PAGE_SIZE = 1000          # API가 한 번에 주는 최대 개수
 REFRESH_DAYS = 7          # 이 기간이 지나면 레시피를 새로 받는다
@@ -56,14 +61,25 @@ class RecipeError(Exception):
 # 레시피 받기 / 저장
 # ---------------------------------------------------------------
 def load_recipes():
-    """식품안전나라 레시피 + 농식품정보원 레시피. 식품안전나라를 못 받아도 농식품정보원 것은 쓴다."""
-    mafra = json.loads(MAFRA_FILE.read_text(encoding="utf-8")) if MAFRA_FILE.exists() else []
+    """식품안전나라 + 농식품정보원 + 메뉴젠 레시피. 식품안전나라를 못 받아도 나머지 둘은 쓴다."""
+    saved = [json.loads(f.read_text(encoding="utf-8")) for f in (MAFRA_FILE, MENUGEN_FILE) if f.exists()]
+    saved = [recipe for recipes in saved for recipe in recipes]
     try:
-        return _load_foodsafety() + mafra
+        recipes = _load_foodsafety() + saved
     except RecipeError:
-        if not mafra:
+        if not saved:
             raise
-        return mafra
+        recipes = saved
+    # 같은 이름은 먼저 나온 것(조리 순서·사진이 있는 쪽)만 남긴다.
+    unique = {}
+    for recipe in recipes:
+        unique.setdefault(recipe["name"].replace(" ", ""), recipe)
+    return list(unique.values())
+
+
+def source_name(recipe):
+    """레시피 출처 이름 (화면 아래 '출처:'에 쓴다)"""
+    return SOURCE_NAMES.get(str(recipe["id"])[:1], "식품안전나라 조리식품 레시피 DB")
 
 
 def _load_foodsafety():

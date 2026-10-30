@@ -207,10 +207,11 @@ def show_flash():
 # 페이지를 처음 그릴 때 다시 채운다. 팝업 안에서 값을 바꾸면 팝업만 다시 그려지므로 팝업마다 save_draft()를 부른다.
 # ---------------------------------------------------------------
 DRAFT_FILE = Path(__file__).parent / "data" / "draft.json"  # 로그인 전(테스트)에만 쓰는 파일
-# 저장할 입력칸 이름(앞부분). add_: 재료 추가, multi_: 재료 사용, bulk_: 장바구니 담기, receipt_draft: 영수증 표
-DRAFT_PREFIXES = ("add_", "multi_amt_", "multi_act_", "bulk_", "single_id", "receipt_draft")
+# 저장할 입력칸 이름(앞부분). add_: 재료 추가, multi_: 재료 사용, bulk_: 장바구니 담기, receipt_draft: 영수증 표,
+DRAFT_PREFIXES = ("add_", "multi_amt_", "multi_act_", "bulk_", "single_id", "receipt_draft",
+                  "shop_name", "shop_quantity", "shop_unit")  # shop_: 장바구니 직접 추가
 DRAFT_SKIP = ("add_msg",)  # 한 번 보여 주고 끝나는 알림은 남기지 않는다.
-POPUP_KEYS = ("add_open", "multi_open", "single_id", "receipt_open", "put_ask", "bulk_rebuy")
+POPUP_KEYS = ("add_open", "multi_open", "single_id", "receipt_open", "put_ask", "bulk_rebuy", "shop_add_open")
 
 
 def _encode(value):

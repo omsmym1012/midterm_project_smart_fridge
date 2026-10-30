@@ -99,6 +99,8 @@ def render_card(index, pick):
         with st.expander("조리 순서"):
             for step in recipe["steps"]:
                 st.markdown(step if step[:1].isdigit() else f"- {step}")
+            if not recipe["steps"]:
+                st.caption("조리 순서가 없는 레시피예요. 재료만 참고해 주세요.")
             if pick["basic"]:
                 st.caption(f"기본 양념: {', '.join(pick['basic'])}")
             if pick["source"] == "api":
@@ -106,7 +108,7 @@ def render_card(index, pick):
                     st.caption(f"재료 전체: {recipe['parts']}")
                 if recipe["tip"]:
                     st.caption(f"💡 {recipe['tip']}")
-                st.caption("출처: 식품안전나라 조리식품 레시피 DB")
+                st.caption(f"출처: {recipe_store.source_name(recipe)}")
 
 
 # ---------------------------------------------------------------
@@ -228,12 +230,25 @@ with tab_dish:
         st.warning(f"레시피 목록을 불러오지 못했어요. {error}")
     if recipes:
         by_id = {r["id"]: r for r in recipes}
+        ordered = sorted(by_id, key=lambda i: (len(by_id[i]["name"]), by_id[i]["name"]))
+        def dish_label(i):
+            return by_id[i]["name"] if i in by_id else i  # 목록에 없는 글자를 직접 친 경우는 그 글자
+
         dish_id = st.selectbox(
             # 이름이 짧은 요리 먼저: '된장찌개'를 찾으면 그냥 된장찌개가 '냉이된장찌개'보다 위에 온다.
-            "만들고 싶은 요리", sorted(by_id, key=lambda i: (len(by_id[i]["name"]), by_id[i]["name"])), index=None,
-            format_func=lambda i: f"{by_id[i]['name']} · {by_id[i]['kind']}" if by_id[i]["kind"] else by_id[i]["name"],
+            "만들고 싶은 요리", ordered, index=None, format_func=dish_label,
             placeholder="요리 이름을 검색해 보세요 (예: 된장찌개)", key="dish_pick",
+            # 검색칸은 띄어쓰기까지 똑같아야 찾는다. 못 찾으면 친 글자 그대로 고를 수 있게 하고(Add: …) 아래에서 다시 찾는다.
+            accept_new_options=True,
         )
+        if dish_id and dish_id not in by_id:
+            # 띄어쓰기를 빼고 다시 찾는다. 똑같은 이름 → 이름에 들어 있는 것 중 가장 짧은 이름
+            typed = dish_id.replace(" ", "")
+            found = [i for i in ordered if typed in by_id[i]["name"].replace(" ", "")]
+            exact = [i for i in found if by_id[i]["name"].replace(" ", "") == typed]
+            dish_id = (exact or found or [None])[0]
+            if not dish_id:
+                st.info(f"'{typed}' 레시피가 없어요. 다른 이름으로 찾아보세요.")
         if dish_id:
             # 냉장고 재료와 비교해서 있는 재료 / 부족한 재료 / 기본 양념으로 나눈다.
             pick = recipe_store.score_recipe(by_id[dish_id], fridge)
