@@ -19,6 +19,7 @@ import shopping_store as shop
 import receipt_panel
 import shopping_panel
 import ui
+import usage_log
 from fridge_board import FRIDGE_HEIGHT, FRIDGE_HEIGHT_MOBILE, TRAY_GAP, TRAY_WIDTH, fridge_board
 from fridge_board import recommend as board_recommend
 
@@ -88,7 +89,7 @@ state.setdefault("bulk_rebuy", None)    # 사용·소진·폐기로 없어진 �
 
 # 새로고침해도 열려 있던 팝업이 다시 뜨도록 주소 끝 ?popup=add|use|put (고른 재료는 &pick=id,id)에 적어 둔다.
 # 새로고침하면 화면 기억이 비므로, 처음 실행할 때 한 번만 주소를 읽는다.
-# 팝업 안에 적던 내용은 사용자별 저장소에 임시 저장해 두었다가 다시 채운다. (ui.save_draft / restore_draft)
+# 팝업 안에 적던 내용은 브라우저에 임시 저장해 두었다가 다시 채운다. (ui.save_draft / ui._on_draft)
 POPUP_FLAGS = {"add": "add_open", "use": "multi_open", "receipt": "receipt_open", "shopadd": "shop_add_open"}
 if "popup_restored" not in state:
     state.popup_restored = True
@@ -96,9 +97,6 @@ if "popup_restored" not in state:
         state.multi_selected = st.query_params["pick"].split(",")
     if st.query_params.get("popup") in POPUP_FLAGS:
         state[POPUP_FLAGS[st.query_params["popup"]]] = True
-    ui.restore_draft()
-    if state.get("receipt_open") and state.get("receipt_draft"):
-        state.receipt_rows = state.receipt_draft  # 영수증 표는 고친 내용까지 그대로
 
 
 def close_dialogs():
@@ -326,7 +324,7 @@ def add_dialog():
         col_ok, col_cancel = st.columns(2)
         col_ok.button("이대로 추가", on_click=on_add_click, kwargs={"confirmed": True})
         col_cancel.button("취소", key="cancel_add_confirm", on_click=cancel_confirm)
-    ui.save_draft()
+    ui.save_draft("add")
 
 
 # ---------------------------------------------------------------
@@ -365,8 +363,7 @@ def discard_selected():
         # 없어진 재료는 장바구니에 담을지 한 번에 묻는다. (사용 팝업과 같은 방식)
         clear_keys("bulk_")
         state.bulk_rebuy = {"items": gone, "message": message}
-    else:
-        state.flash = (True, message)
+    # (폐기 결과는 재료가 사라지는 게 보이므로 알림 없음)
 
 
 def open_use_dialog():
@@ -456,7 +453,7 @@ def use_body(chosen, from_selection):
             if act != ACT_USE:
                 amount = 0.0
             plans[item["id"]] = (item, act, amount, expired)
-    ui.save_draft()
+    ui.save_draft("use")
 
     if st.button("적용하기", type="primary", width="stretch"):
         done, gone = [], []
@@ -483,8 +480,7 @@ def use_body(chosen, from_selection):
             # 없어진 재료가 있으면 장바구니에 담을지 한 번에 묻는다.
             clear_keys("bulk_")
             state.bulk_rebuy = {"items": gone, "message": message}
-        else:
-            state.flash = (bool(done), message)
+        # (사용 결과는 수량이 바뀌는 게 보이므로 알림 없음)
         st.rerun()
 
 
@@ -508,7 +504,7 @@ def bulk_rebuy_dialog():
                 key=f"bulk_qty_{gone['item_id']}",
             )
             picks.append((gone, quantity))
-    ui.save_draft()
+    ui.save_draft("rebuy")
 
     col_yes, col_no = st.columns(2)
     add = col_yes.button("담기", type="primary", width="stretch", disabled=not picks)
@@ -522,13 +518,9 @@ def bulk_rebuy_dialog():
                 (added if ok else already).append(gone["name"])
         # 물어본 재료는 장보기의 '다시 사기'에 다시 나오지 않게 한다.
         shop.mark_handled(data, [f"used:{gone['item_id']}" for gone in info["items"]])
-        message = info["message"]
-        if added:
-            message += f" 🛒 장바구니에 담았어요: {', '.join(added)}"
-        if already:
-            message += f" (이미 있음: {', '.join(already)})"
         state.bulk_rebuy = None
-        state.flash = (True, message)
+        if added:
+            state.flash = (True, f"🛒 장바구니에 담았어요: {', '.join(added)}")
         st.rerun()
 
 
@@ -645,8 +637,7 @@ def place_from_bag(only_zone=None):
     for item in placed:
         item["new"] = True  # [완료]를 누를 때까지 노란색으로 표시
     if placed:
-        store.save_items(all_items)
-        state.flash = (True, f"추천 칸에 넣었어요: {', '.join(item['name'] for item in placed)}")
+        store.save_items(all_items)  # (넣은 재료는 노란색으로 보이므로 알림 없음)
     elif only_zone:
         state.flash = (False, "새 재료 중에 이 칸이 추천 칸인 재료가 없어요.")
 
@@ -674,14 +665,10 @@ def on_done():
 def on_undo():
     """[취소]: 노란색으로 표시된(봉투에서 넣은) 재료를 다시 새 재료 봉투로 돌려놓는다."""
     all_items = store.load_items()
-    undone = 0
     for item in all_items:
         if item.pop("new", None):
             item["zone"] = None
-            undone += 1
     store.save_items(all_items)
-    if undone:
-        state.flash = (True, f"넣기를 취소했어요. 재료 {undone}개가 새 재료 봉투로 돌아갔어요.")
 
 
 def on_close_door():
@@ -699,6 +686,7 @@ def on_to_put():
     first = store.earliest_batch(item)
     shop.add_bought(shop.load(), item["name"], store.total_quantity(item), item["unit"], first["expiry"])
     store.delete_item(all_items, item_id)
+    usage_log.undo_buy(item["name"])  # [완료]로 다시 넣으면 또 기록되므로 두 번 세지 않게
 
 
 # 장보기의 '냉장고 넣기' 탭을 보고 있으면 봉투 재료를 그 목록으로 끌어 옮길 수 있다.
@@ -732,7 +720,7 @@ for param, value in (
         st.query_params[param] = value
     else:
         st.query_params.pop(param, None)
-ui.save_draft()  # 팝업이 닫혔으면 임시 저장도 비운다.
+ui.save_draft("page")  # 팝업이 닫혔으면 임시 저장도 비운다.
 
 # 열려 있어야 하는 팝업을 연다. (한 번에 하나만)
 if state.bulk_rebuy:

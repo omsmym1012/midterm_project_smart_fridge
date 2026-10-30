@@ -282,21 +282,6 @@ def mark_used(items, item_id):
 # ---------------------------------------------------------------
 # 수정 / 삭제 (재료 줄 전체)
 # ---------------------------------------------------------------
-def update_item(items, item_id, new_name, new_unit, category, storage, tip):
-    """재료의 이름·단위·분류(종류, 보관 방법, 팁)를 수정한다."""
-    item = _find(items, item_id)
-    # 이름·단위가 둘 다 같은 줄이 생기면 어느 줄에 합쳐야 할지 모호해지므로 막는다.
-    if find_in_fridge_by_name(items, new_name, unit=new_unit, exclude_id=item_id):
-        return False, f"'{new_name}'은(는) 이미 '{new_unit}' 단위로 냉장고에 있어요. 이름이나 단위를 바꿔 주세요."
-    item["name"] = new_name
-    item["unit"] = new_unit
-    item["category"] = category
-    item["storage"] = storage
-    item["tip"] = tip
-    save_items(items)
-    return True, f"'{new_name}' 정보를 수정했어요."
-
-
 def delete_item(items, item_id):
     """재료를 기록까지 완전히 지운다. (잘못 입력한 재료를 지울 때 사용)"""
     item = _find(items, item_id)

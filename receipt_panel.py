@@ -137,7 +137,7 @@ def receipt_dialog():
         {k: (v.date() if isinstance(v, pd.Timestamp) else clean(v)) for k, v in row.items()}
         for row in edited.to_dict("records")
     ]
-    ui.save_draft()
+    ui.save_draft("receipt")
 
     rows = [
         row for row in edited.to_dict("records")
@@ -172,10 +172,8 @@ def receipt_dialog():
             in_cart = [item for item in in_cart if item]
             shop.remove_items(cart, [item["id"] for item in in_cart])
 
-        message = f"🧊 냉장고에 넣었어요: {', '.join(names)}."
-        if in_cart:
-            message += f" 장바구니에서 뺐어요: {', '.join(item['name'] for item in in_cart)}."
         state.receipt_rows = None
         state.receipt_open = False
-        state.flash = (True, message)
+        if in_cart:  # 넣은 재료는 새 재료 봉투에 보이므로, 안 보이는 장바구니 쪽만 알린다.
+            state.flash = (True, f"장바구니에서도 뺐어요: {', '.join(item['name'] for item in in_cart)}")
         st.rerun()  # 팝업을 닫고 냉장고 화면을 새로 그린다.

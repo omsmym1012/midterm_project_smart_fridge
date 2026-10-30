@@ -189,7 +189,8 @@ def render(head, door, mobile, show_head):
     # ---------------------------------------------------------------
     def finish(ok, message):
         """결과 메시지를 기억해 두고 화면을 새로 그린다. (메시지는 다음 화면 맨 위에 표시)"""
-        st.session_state.flash = (ok, message)
+        if message:  # 빈 메시지면 알림 없이 다시 그리기만 한다.
+            st.session_state.flash = (ok, message)
         st.rerun()
 
 
@@ -338,14 +339,11 @@ def render(head, door, mobile, show_head):
                         ok, _ = shop.add_item(data, candidate["name"], quantity, candidate["unit"], candidate["kind"])
                         shop.mark_handled(data, candidate["keys"])
                         (added if ok else already).append(candidate["name"])
-                    message = f"🛒 담았어요: {', '.join(added)}" if added else ""
-                    if already:
-                        message += f" (이미 있음: {', '.join(already)})"
-                    finish(bool(added), message.strip())
+                    finish(False, f"이미 장바구니에 있어요: {', '.join(already)}" if already else "")
                 if col_skip.button("안 담기", key="cand_skip", disabled=not chosen, width="stretch"):
                     for candidate, _ in chosen:
                         shop.mark_handled(data, candidate["keys"])
-                    finish(True, f"추천에서 뺐어요: {', '.join(c['name'] for c, _ in chosen)}")
+                    finish(True, "")
 
 
         with tab_cart:
@@ -379,6 +377,7 @@ def render(head, door, mobile, show_head):
                         st.session_state[f"shop_chk_{item['id']}"] = on
                     shop.save(data)
 
+                st.caption("담은 재료에 체크하고 [구매]를 누르세요.")  # 체크 칸에 글자가 없어서 한 줄 안내
                 select_all_buttons("cart", check_all)
 
             # 장바구니 체크박스를 [삭제] 버튼과 비슷한 크기로 키운다.
@@ -424,10 +423,10 @@ def render(head, door, mobile, show_head):
                     col_name, col_web, col_qty, col_unit, col_chk, col_del = st.columns(
                         [1.4, 1.4, 1.6, 0.7, 0.5, 1], vertical_alignment="center"
                     )
-                # 산 재료는 이름에 줄을 긋고 흐리게 보여 준다. 인터넷으로 살 재료는 이름 앞에 🌐
+                # 담은(체크한) 재료는 초록 글씨에 🛒. 인터넷으로 살 재료는 이름 앞에 🌐
                 web = "🌐 " if item.get("online") else ""
                 if item["checked"]:
-                    col_name.markdown(f":gray[~~{web}{item['name']}~~]")
+                    col_name.markdown(f":green[🛒 {web}**{item['name']}**]")  # 담은 재료: 초록 + 🛒 (아직 구매 전)
                 else:
                     col_name.markdown(f"{web}**{item['name']}**")
                 if not item["checked"]:
@@ -455,7 +454,7 @@ def render(head, door, mobile, show_head):
                 delete_label = ":material/delete:" if MOBILE else "삭제"
                 if col_del.button(delete_label, key=f"shop_del_{item['id']}", help="삭제"):
                     shop.remove_items(data, [item["id"]])
-                    finish(True, f"'{item['name']}'을(를) 장바구니에서 뺐어요.")
+                    finish(True, "")
                 if item.get("advice") and not item["checked"]:
                     st.caption(f"🧮 {item['advice']}")  # 구매 적정량 추천 이유 (줄 아래에 한 줄로)
                 if len(item.get("dishes", [])) > 1 and not item["checked"]:
@@ -514,12 +513,11 @@ def render(head, door, mobile, show_head):
                     rows.append((item, put, expiry))
 
                 if st.button("완료", type="primary", key="shop_done"):
-                    added, separate, skipped = [], [], []
+                    separate = []
                     with st.spinner("냉장고에 넣는 중..."):
                         for item, put, expiry in rows:
                             if not put:
-                                skipped.append(item["name"])
-                                continue
+                                continue  # 체크를 푼 재료는 넣지 않고 목록에서만 뺀다.
                             name, unit = item["name"], item["unit"]
                             # 같은 이름이 다른 단위로만 있으면 따로 줄이 생긴다는 걸 알려 주기 위해 미리 확인
                             if fridge_store.find_all_by_name(fridge_items, name) and not fridge_store.find_in_fridge_by_name(
@@ -530,17 +528,9 @@ def render(head, door, mobile, show_head):
                                 fridge_items, name, expiry, float(item["quantity"]), unit,
                                 known_info(name), allow_new_unit=True,
                             )
-                            added.append(name)
                     shop.remove_items(data, [item["id"] for item in bought])
 
-                    message = ""
-                    if added:
-                        message += f"🧊 냉장고에 넣었어요: {', '.join(added)}. "
-                    if skipped:
-                        message += f"넣지 않고 리스트에서 뺐어요: {', '.join(skipped)}. "
-                    if separate:
-                        message += f"({', '.join(separate)}은(는) 단위가 달라서 따로 추가됐어요.)"
-                    finish(True, message.strip())
+                    finish(True, f"{', '.join(separate)}은(는) 단위가 달라서 따로 넣었어요." if separate else "")
 
 
 
@@ -588,8 +578,7 @@ def render(head, door, mobile, show_head):
                 return
             for k, v in SHOP_ADD_DEFAULTS.items():
                 state[k] = v
-            state.shop_add_open = False  # 담았으면 팝업을 닫는다.
-            state.flash = (True, message)
+            state.shop_add_open = False  # 담았으면 팝업을 닫는다. (목록에 보이므로 알림 없음)
 
 
         if "shop_add_msg" in st.session_state:
@@ -605,7 +594,7 @@ def render(head, door, mobile, show_head):
             col_btn.button("담기", key="shop_add", type="primary", on_click=on_shop_add_click, width="stretch")
         if not st.session_state.shop_add_open:
             st.rerun()  # 담았으면 팝업을 닫고 장바구니를 새로 그린다.
-        ui.save_draft()  # 새로고침해도 적던 내용이 남게
+        ui.save_draft("shop_add")  # 새로고침해도 적던 내용이 남게
 
 
     if st.session_state.get("shop_add_open"):

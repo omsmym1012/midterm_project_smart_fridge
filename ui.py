@@ -14,17 +14,15 @@
 
 import json
 from datetime import date
-from pathlib import Path
 
 import streamlit as st
 
-import storage
 
 MOBILE_WIDTH = 700  # px. 이보다 좁으면 모바일 화면
 
 _WATCH_JS = """
 export default function (component) {
-    const { data, setStateValue } = component;
+    const { data, setStateValue, setTriggerValue } = component;
     const html = document.documentElement;
 
     // 앱 배경색이 어두우면 다크 모드로 본다.
@@ -59,6 +57,13 @@ export default function (component) {
         window.addEventListener("resize", () => sendWidth());
     }
 
+    // 새로고침 뒤 한 번: 이 브라우저에 저장해 둔 팝업 입력 내용(save_draft)을 Python에 보낸다. (로그인 뒤에만 draftKey가 온다)
+    if (data.draftKey) {
+        let saved = "";
+        try { saved = localStorage.getItem(data.draftKey) || ""; } catch (e) {}
+        setTriggerValue("draft", saved);
+    }
+
     // 검색칸에서 목록에 없는 글자를 치면 Streamlit이 "Add: 김치 볶음밥"(영어)을 보여 준다. → "🔍 김치 볶음밥 찾기"
     if (!window.__ftAddWatch) {
         window.__ftAddWatch = new MutationObserver(() => {
@@ -82,10 +87,15 @@ def _on_mobile_change():
 
 def watch():
     """감시 컴포넌트를 붙인다. (app.py에서 매번 한 번 부른다. 화면에는 보이지 않는다)"""
+    state = st.session_state
     _watch(
         key="ui_watch",
-        data={"mobile": st.session_state.get("ui_mobile"), "limit": MOBILE_WIDTH},
-        on_mobile_change=_on_mobile_change,
+        data={
+            "mobile": state.get("ui_mobile"), "limit": MOBILE_WIDTH,
+            # 로그인했고 아직 되살리지 않았을 때만 브라우저 임시 저장을 읽어 오게 한다.
+            "draftKey": _draft_key() if state.get("user") and not state.get("draft_restored") else None,
+        },
+        on_mobile_change=_on_mobile_change, on_draft_change=_on_draft,
     )
 
 
@@ -129,7 +139,7 @@ html[data-ft="dark"] button[data-testid="stBaseButton-primary"]:not(:disabled) p
 /* 누를 수 없는(비활성) 파랑 버튼은 배경이 어두워지므로 흐린 밝은 글자로 */
 html[data-ft="dark"] button[data-testid="stBaseButton-primary"]:disabled,
 html[data-ft="dark"] button[data-testid="stBaseButton-primary"]:disabled p { color: rgba(228, 234, 240, 0.45) !important; }
-.st-key-ui_watch { display: none; }
+.st-key-ui_watch, [class*="st-key-draft_saver_"] { display: none; }
 /* 머리 영역: 높이 고정, 넘치는 부분은 감춘다(스크롤 막대 없이) */
 .st-key-page_head { overflow: hidden !important; padding-top: 4px; box-sizing: border-box; }
 .st-key-page_head [data-testid="stCaptionContainer"] { margin-top: -0.4rem; }
@@ -219,10 +229,17 @@ def show_flash():
 
 # ---------------------------------------------------------------
 # 팝업에 적던 내용 임시 저장 (5단계)
-# 새로고침하면 화면 기억(session_state)이 비므로, 팝업 입력칸 값을 사용자별 저장소("draft")에 적어 두고
-# 페이지를 처음 그릴 때 다시 채운다. 팝업 안에서 값을 바꾸면 팝업만 다시 그려지므로 팝업마다 save_draft()를 부른다.
+# 새로고침하면 화면 기억(session_state)이 비므로, 팝업 입력칸 값을 이 브라우저(localStorage)에 적어 두고
+# 새로고침 뒤 다시 채운다. 인터넷으로 저장하지 않아서 빠르다. (다른 기기에서는 이어 쓸 수 없다)
+# 팝업 안에서 값을 바꾸면 팝업만 다시 그려지므로 팝업마다 save_draft(where)를 부른다.
 # ---------------------------------------------------------------
-DRAFT_FILE = Path(__file__).parent / "data" / "draft.json"  # 로그인 전(테스트)에만 쓰는 파일
+_DRAFT_JS = """
+export default function (component) {
+    const { data } = component;
+    try { localStorage.setItem(data.key, data.draft); } catch (e) {}  // 저장소를 못 쓰는 브라우저면 그냥 넘어간다.
+}
+"""
+_draft_saver = st.components.v2.component("draft_saver", js=_DRAFT_JS)
 # 저장할 입력칸 이름(앞부분). add_: 재료 추가, multi_: 재료 사용, bulk_: 장바구니 담기, receipt_draft: 영수증 표,
 DRAFT_PREFIXES = ("add_", "multi_amt_", "multi_act_", "bulk_", "single_id", "receipt_draft",
                   "shop_name", "shop_quantity", "shop_unit")  # shop_: 장바구니 직접 추가
@@ -239,22 +256,35 @@ def _decode(obj):
     return date.fromisoformat(obj["__date__"]) if set(obj) == {"__date__"} else obj
 
 
-def save_draft():
-    """열린 팝업의 입력칸 값을 저장한다. 팝업이 없으면 비운다. (바뀌었을 때만 저장)"""
+def _draft_key():
+    return f"ft_draft_{st.session_state.get('user')}"  # 같은 브라우저에서도 사람마다 따로
+
+
+def save_draft(where):
+    """열린 팝업의 입력칸 값을 브라우저에 저장한다. 팝업이 없으면 비운다.
+
+    where: 부르는 곳 이름 (팝업마다 다른 이름이어야 한 화면에 여러 번 그려도 겹치지 않는다)
+    """
     state = st.session_state
+    if not state.get("draft_restored"):
+        return  # 새로고침 뒤 저장된 내용을 먼저 읽어 와야 한다. (읽기 전에 빈 내용으로 덮어쓰지 않게)
     draft = {}
     if any(state.get(key) for key in POPUP_KEYS):
         draft = _encode({
             key: value for key, value in state.items()
             if str(key).startswith(DRAFT_PREFIXES) and key not in DRAFT_SKIP
         })
-    if draft != state.get("_draft_saved", {}):
-        storage.save("draft", DRAFT_FILE, draft)
-        state._draft_saved = draft
+    _draft_saver(key=f"draft_saver_{where}", data={"key": _draft_key(), "draft": json.dumps(draft, ensure_ascii=False)})
 
 
-def restore_draft():
-    """새로고침 직후 한 번: 저장해 둔 팝업 입력칸 값을 다시 채운다."""
-    draft = storage.load("draft", DRAFT_FILE, {})
-    st.session_state._draft_saved = draft
-    st.session_state.update(json.loads(json.dumps(draft), object_hook=_decode))
+def _on_draft():
+    """새로고침 뒤 한 번: 브라우저에 저장해 둔 팝업 입력칸 값을 다시 채운다."""
+    state = st.session_state
+    state.draft_restored = True
+    try:
+        draft = json.loads((state.get("ui_watch") or {}).get("draft") or "{}", object_hook=_decode)
+    except ValueError:
+        return
+    state.update(draft)
+    if state.get("receipt_open") and state.get("receipt_draft"):
+        state.receipt_rows = state.receipt_draft  # 영수증 표는 고친 내용까지 그대로

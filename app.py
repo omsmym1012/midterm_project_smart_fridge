@@ -13,6 +13,7 @@ import streamlit as st
 import auth
 import sample_data
 import shopping_store
+import storage
 import ui
 
 # 로그아웃·테스트 데이터 넣기로 예약된 화면 기억 지우기 (다른 코드가 화면 기억을 읽기 전에)
@@ -39,8 +40,14 @@ page = st.navigation([fridge_page, recipe_page], position="sidebar" if st.sessio
 # 로그인하지 않았으면 로그인 화면만 보여 주고 멈춘다. 로그인하면 그 사람 냉장고만 읽고 쓴다. (auth.py, storage.py)
 user = auth.require_login()
 
+STORAGE_ERROR = "저장소에 연결하지 못했어요. 인터넷 연결을 확인하고 잠시 후 새로고침해 주세요."
+
 # 아직 안 산 항목 개수 (휴대폰 아래 메뉴의 "장보기 3"에 쓴다)
-count = shopping_store.unchecked_count(shopping_store.load())
+try:
+    count = shopping_store.unchecked_count(shopping_store.load())
+except storage.StorageError:
+    st.error(STORAGE_ERROR)
+    st.stop()
 
 # 다른 페이지에 다녀와도 입력해 둔 값이 남게 한다.
 # Streamlit은 화면에 없는 입력칸의 값을 지우는데, 매번 같은 값을 다시 넣어 두면 지우지 않는다.
@@ -70,11 +77,10 @@ def reset_to_sample():
     sample_data.load_sample()
     # 입력칸·열린 창·추천 결과 같은 화면 상태도 모두 지워서 처음 상태로 만든다. (로그인은 그대로)
     # 지우기는 다음 실행 맨 앞에서 한다. (auth.clear_pending)
-    st.session_state.clear_to = {**auth.keep_keys(), "flash": (True, "🧪 테스트 데이터를 넣었어요.")}
+    st.session_state.clear_to = auth.keep_keys()
 
 
 with st.sidebar:
-    st.divider()
     col_user, col_out = st.columns([3, 2], vertical_alignment="center")
     col_user.markdown(f"👤 **{user}**")
     col_out.button("로그아웃", key="log_out", type="tertiary", on_click=auth.log_out)
@@ -89,4 +95,8 @@ with st.sidebar:
             on_click=lambda: st.session_state.update(sample_ask=True),
         )
 
-page.run()
+# 페이지를 그리다가 저장소(Supabase)에 연결하지 못하면 오류 대신 안내 한 줄 (st.rerun/st.stop은 그대로 통과)
+try:
+    page.run()
+except storage.StorageError:
+    st.error(STORAGE_ERROR)

@@ -35,6 +35,16 @@ def save(events):
     storage.save("usage_log", LOG_FILE, {"events": events})
 
 
+def undo_buy(name):
+    """이 재료의 마지막 '구매' 기록 하나를 지운다. (새 재료 봉투에서 냉장고 넣기 목록으로 되돌릴 때)"""
+    events = load()
+    for i in range(len(events) - 1, -1, -1):
+        if events[i]["kind"] == "buy" and events[i]["name"] == name:
+            del events[i]
+            save(events)
+            return
+
+
 def log(kind, name, unit, quantity, expiry=None, when=None):
     """기록 한 줄을 더한다. kind: "buy" / "use" / "discard", expiry: "YYYY-MM-DD" 또는 None"""
     if not quantity or quantity <= 0:
