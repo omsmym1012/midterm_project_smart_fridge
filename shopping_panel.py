@@ -354,12 +354,15 @@ def render(head, door, mobile, show_head):
 
             def on_check_change(item_id):
                 """체크박스(담았어요)를 누르면 바로 저장한다. 산 것은 [구매]를 눌러야 된다."""
-                shop.set_checked(data, item_id, st.session_state[f"shop_chk_{item_id}"])
+                # 테스트 데이터 넣기·로그아웃으로 화면 기억을 지운 직후엔 값이 없을 수 있어서 건너뛴다.
+                if f"shop_chk_{item_id}" in st.session_state:
+                    shop.set_checked(data, item_id, st.session_state[f"shop_chk_{item_id}"])
 
 
             def on_qty_change(item_id):
                 """수량을 고치면 바로 저장한다. (냉장고 넣기 탭에 이 수량으로 들어간다)"""
-                shop.set_quantity(data, item_id, st.session_state[f"shop_qty_{item_id}"])
+                if f"shop_qty_{item_id}" in st.session_state:  # (위와 같은 이유)
+                    shop.set_quantity(data, item_id, st.session_state[f"shop_qty_{item_id}"])
 
 
             in_cart = [item for item in data["items"] if not item.get("bought")]  # [구매]한 것은 냉장고 넣기 탭에
