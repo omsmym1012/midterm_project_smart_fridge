@@ -1,6 +1,6 @@
 """로그인 화면과 로그인 유지 (5단계: 사용자별 개인 냉장고)
 
-- 로그인하지 않았으면 닉네임·비밀번호 화면(로그인 / 처음이에요)을 보여 주고 앱을 멈춘다.
+- 로그인하지 않았으면 닉네임·비밀번호 화면(로그인 / 회원가입)을 보여 주고 앱을 멈춘다.
 - 로그인하면 st.session_state["user"]에 닉네임을 넣는다. → storage.py가 이 사람 데이터만 읽고 쓴다.
 - 새로고침하면 Streamlit의 화면 기억(session_state)이 비므로, 로그인할 때 받은 토큰을
   브라우저 저장소(localStorage)에 넣어 두고, 다음에 열 때 그 토큰으로 자동 로그인한다.
@@ -74,7 +74,7 @@ def _log_in(nickname):
 def _login_form():
     st.title("🧊 스마트 냉장고")
     st.caption("내 냉장고를 쓰려면 닉네임으로 로그인하세요.")
-    tab_in, tab_new = st.tabs(["로그인", "처음이에요"])
+    tab_in, tab_new = st.tabs(["로그인", "회원가입"])
     with tab_in, st.form("login_form"):
         nickname = st.text_input("닉네임", autocomplete="username")
         # Streamlit 비밀번호 칸은 기본이 '새 비밀번호'라서 브라우저가 비밀번호 추천을 띄운다. 로그인 칸은 '기존 비밀번호'로
