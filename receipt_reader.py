@@ -1,7 +1,8 @@
 """영수증 사진 읽기 (2단계)
 
-영수증 사진을 AI(사진을 읽을 수 있는 무료 모델)에 보내서
+영수증 사진을 Upstage 문서 정보 추출 API(UPSTAGE_API_KEY)에 보내서
 가게 이름, 산 날짜, 식재료 목록(이름·수량·단위·가격)을 받아 온다.
+키가 없으면 전처럼 OpenRouter의 사진 읽는 무료 AI로 읽는다.
 사진은 어디에도 저장하지 않는다. (공개 저장소에 영수증 사진이 올라가지 않게)
 
 반환 예:
@@ -9,8 +10,12 @@
      "items": [{"name": "우유", "quantity": 1, "unit": "팩", "price": 2980}, ...]}
 """
 
+import base64
+import json
 import re
 from datetime import date, timedelta
+
+import requests
 
 import ai_client
 import fridge_store
@@ -20,7 +25,7 @@ PROMPT = (
     "- store: 가게 이름 (모르면 빈 글자)\n"
     "- date: 구매 날짜 YYYY-MM-DD (모르면 null)\n"
     "- items: 산 물건 목록. 각 물건은 name, quantity, unit, price\n"
-    "  * 먹는 것(식재료·음료·간식·간편식)만 넣고, 봉투·세제·휴지 같은 생활용품과 할인·합계 줄은 빼세요.\n"
+    "  * 먹는 것(식재료·음료·간식·간편식)만 넣고, 봉투·세제·휴지 같은 생활용품과 할인·합계·주문금액·결제금액 같은 금액 줄은 빼세요.\n"
     "  * name은 브랜드·용량을 뺀 간단한 재료 이름으로 (예: '서울우유 1L' → '우유', '국산콩두부300g' → '두부').\n"
     "  * quantity는 산 개수(숫자), unit은 다음 중 하나: " + ", ".join(fridge_store.UNITS) + "\n"
     "    포장 상품은 개수로 세고(두부 1모, 만두 1봉지, 우유 2팩), 고기·생선처럼 무게로 파는 것만 g으로 적으세요.\n"
@@ -32,15 +37,59 @@ PROMPT = (
 
 
 # AI가 가끔 넣는 먹는 것이 아닌 줄 (봉투·할인·합계 등). 이름에 이 글자가 있으면 뺀다.
-NOT_FOOD = ["봉투", "봉지값", "쇼핑백", "세제", "휴지", "물티슈", "할인", "합계", "포인트", "부가세", "과세", "카드"]
+NOT_FOOD = [
+    "봉투", "봉지값", "쇼핑백", "세제", "휴지", "물티슈", "할인", "합계", "포인트", "부가세", "과세", "카드",
+    # 금액 줄 (주문금액·총 결제금액·받은 돈·거스름돈 등)
+    "금액", "결제", "총액", "소계", "공급가", "현금", "거스름", "잔돈", "승인", "적립", "쿠폰", "배달팁", "배송비",
+]
 
 # 개수로 세는 게 자연스러운 종류 (이런 재료가 g/ml로 오면 포장 하나로 고친다)
 WEIGHT_CATEGORIES = {"육류", "해산물"}
 
 
+UPSTAGE_URL = "https://api.upstage.ai/v1/information-extraction"
+# Upstage에 "이런 모양으로 뽑아 달라"고 주는 틀. 설명(description)이 AI에게 주는 안내가 된다.
+RECEIPT_SCHEMA = {
+    "type": "object",
+    "properties": {
+        "store": {"type": "string", "description": "가게 이름"},
+        "date": {"type": "string", "description": "구매 날짜 YYYY-MM-DD"},
+        "items": {
+            "type": "array",
+            "description": "산 먹을거리만. 생활용품, 봉투, 할인, 합계, 주문금액, 결제금액 같은 금액 줄은 넣지 않는다.",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "브랜드·용량을 뺀 간단한 재료 이름 (예: 서울우유 1L → 우유)"},
+                    "quantity": {"type": "number", "description": "산 개수. 무게로 파는 고기·생선은 g 숫자"},
+                    "unit": {"type": "string", "description": "다음 중 하나: " + ", ".join(fridge_store.UNITS)},
+                    "price": {"type": "number", "description": "그 줄의 결제 금액(원). 할인 뒤 금액"},
+                },
+            },
+        },
+    },
+}
+
+
 def read_receipt(image_bytes, mime="image/jpeg"):
     """영수증 사진을 읽어서 결과 dict를 돌려준다. 실패하면 None."""
-    return ai_client.ask_json_with_image(PROMPT, image_bytes, mime, validate=check_answer)
+    key = ai_client.get_secret("UPSTAGE_API_KEY")
+    if not key:
+        return ai_client.ask_json_with_image(PROMPT, image_bytes, mime, validate=check_answer)
+    body = {
+        "model": "information-extract",
+        "messages": [{"role": "user", "content": [{"type": "image_url", "image_url": {
+            "url": f"data:application/octet-stream;base64,{base64.b64encode(image_bytes).decode('ascii')}"
+        }}]}],
+        "response_format": {"type": "json_schema", "json_schema": {"name": "receipt", "schema": RECEIPT_SCHEMA}},
+    }
+    try:
+        response = requests.post(UPSTAGE_URL, json=body, headers={"Authorization": f"Bearer {key}"}, timeout=90)
+        response.raise_for_status()
+        data = json.loads(response.json()["choices"][0]["message"]["content"])
+    except (requests.RequestException, ValueError, KeyError, IndexError):
+        return None  # 화면에서 "읽지 못했어요" 안내 → 직접 입력
+    return check_answer(data)  # 금액 줄 거르기·단위 맞추기는 그대로
 
 
 def check_answer(data):

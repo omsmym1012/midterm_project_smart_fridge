@@ -1,7 +1,7 @@
 """🧾 영수증 등록 팝업 (2단계)
 
 냉장고·장보기 화면의 [🧾 영수증] 버튼을 누르면 뜨는 팝업. (views/fridge.py에서 연다)
-1) 영수증 사진을 찍거나(휴대폰) 올리고 [영수증 읽기] → AI가 가게·날짜·식재료(이름·수량·단위·가격)를 읽는다.
+1) 영수증 사진을 올리고 (휴대폰은 올리기 메뉴에서 바로 찍을 수 있다) [영수증 읽기] → AI가 가게·날짜·식재료(이름·수량·단위·가격)를 읽는다.
 2) 표에서 확인·수정한다. (유통기한은 종류별 보통 기한으로 미리 채워 두니 포장 날짜로 고친다)
 3) [냉장고에 넣기] → 냉장고에 넣고, 장바구니에 같은 재료가 있으면 장바구니에서 뺀다.
    (가게·날짜·가격은 지금은 저장하지 않는다. 3단계 구매 기록에서 쓸 예정)
@@ -21,7 +21,6 @@ import shopping_store as shop
 import ui
 
 state = st.session_state
-TAKE, PICK = "📷 사진 찍기", "🖼️ 사진 올리기"
 
 
 def open_receipt():
@@ -77,20 +76,10 @@ def receipt_dialog():
     # ---------------------------------------------------------------
     if state.receipt_rows is None:
         state.pop("receipt_draft", None)  # 표가 없으면 임시 저장한 표도 지운다.
-        # [📷 사진 찍기]로 카메라(PC는 웹캠)를 켜거나, [🖼️ 사진 올리기]로 파일·앨범에서 고른다.
-        # 처음 고른 쪽: 휴대폰은 찍기, PC는 올리기. (카메라는 https 주소에서만 켜진다. 배포 사이트·localhost는 괜찮다)
-        how = st.segmented_control(
-            "사진 고르는 방법", [TAKE, PICK], default=TAKE if ui.is_mobile() else PICK, required=True,
-            key="receipt_how", label_visibility="collapsed", width="stretch",
+        # 휴대폰에서 누르면 휴대폰 기본 메뉴(카메라로 찍기 / 앨범에서 고르기)가 뜬다. PC는 파일 고르기
+        photo = st.file_uploader(
+            "영수증 사진", type=["jpg", "jpeg", "png"], label_visibility="collapsed",  # Upstage가 받는 사진 형식만
         )
-        if how == TAKE:
-            # 글자가 잘 읽히도록 높은 해상도로 찍는다.
-            photo = st.camera_input("영수증 찍기", key="receipt_cam", label_visibility="collapsed",
-                                    resolution="1080p")
-        else:
-            photo = st.file_uploader(
-                "영수증 사진", type=["jpg", "jpeg", "png", "webp"], label_visibility="collapsed",
-            )
         col_read, col_manual, _ = st.columns([1, 1, 2])
         if col_read.button("영수증 읽기", type="primary", disabled=photo is None, width="stretch"):
             with st.spinner("영수증을 읽는 중... (1분 정도 걸릴 수 있어요)"):
@@ -103,8 +92,8 @@ def receipt_dialog():
         if col_manual.button("직접 입력", width="stretch"):
             show_result({"items": [], "date": None})
             st.rerun()
-        if photo is not None and how == PICK:
-            st.image(photo, width=260)  # (찍은 사진은 카메라 칸에 이미 보인다)
+        if photo is not None:
+            st.image(photo, width=260)
         return
 
 
