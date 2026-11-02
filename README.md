@@ -26,10 +26,9 @@
 
 ## 4. Claude Code 증거와 확인 결과
 
-**대표 사례 확인**: 
+**대표 사례 확인**: '테스트 데이터 넣기'로 기한별 재료를 섞어 넣고 냉장고 화면을 확인했습니다. 재료마다 남은 날짜가 빨강·주황·초록으로 표시되고, 위쪽에 기한이 지난 재료부터 유통기한이 일주일 남은 재료들까지의 각 개수가 나옵니다.
 
-**작업 계획 파일**: 할 일과 상태를 파일에 적어 두게 해서, 대화가 길어져도 무엇을 하던 중인지 놓치지 않았습니다.
-`
+![테스트 데이터를 넣은 냉장고 화면](docs/fridge.png)
 
 **실패 사례: 배포 사이트 오류**: 로그인 기능을 만든 후 테스트 데이터를 넣거나 로그아웃 시에 에러가 발생.
 
@@ -38,14 +37,8 @@
 오류 화면을 보내자 Claude Code가 내 컴퓨터에서 같은 오류를 재현해 원인을 찾았습니다.
 지워진 값이면 저장을 건너뛰게 고친 뒤, 같은 순서로 다시 눌러 오류 없이 테스트 데이터가 들어가는 것을 확인했습니다.
 
-**③ 실패 사례: 영수증 금액 줄**: AI로 영수증을 읽으면 '주문금액', '총 결제금액'까지 재료로 들어갔습니다. 영수증 인식 API(Upstage)로 바꾸고, 금액 줄과 봉투 줄을 일부러 섞은 시험용 영수증으로 다시 읽었습니다.
+**실패 사례: 영수증 인식 오류**: AI로 영수증을 읽으면 '주문금액', '총 결제금액'까지 재료로 인식이 되는 문제가 있었습니다. 영수증 인식 API인 upstage로 바꾸고, 금액 줄과 봉투 줄을 일부러 섞은 시험용 영수증으로 다시 읽었습니다.
 
-| 영수증 줄 | 읽은 결과 |
-|---|---|
-| 서울우유 1L | 우유 1L, 2,980원 |
-| 국산콩 두부 300g | 두부 1개, 2,480원 |
-| 대파 1단 | 대파 1단, 1,990원 |
-| 비닐봉투, 주문금액, 할인, 총 결제금액, 카드 승인 | 모두 빠짐 |
 
 ## 5. 효과적이었던 방법 3가지
 
@@ -75,4 +68,4 @@
 
 ## 사용한 API·데이터
 
-[OpenRouter](https://openrouter.ai/), [Upstage](https://console.upstage.ai/docs/capabilities/extract/universal-extraction), [식품안전나라 레시피](https://www.foodsafetykorea.go.kr/), [농식품정보원 레시피](https://data.mafra.go.kr/), [농촌진흥청 메뉴젠](https://www.data.go.kr/data/15143471/openapi.do)(공공누리 제4유형), [Supabase](https://supabase.com/)
+[OpenRouter](https://openrouter.ai/), [Upstage](https://console.upstage.ai/docs/capabilities/extract/universal-extraction), [식품안전나라 레시피](https://www.foodsafetykorea.go.kr/), [농식품정보원 레시피](https://data.mafra.go.kr/), [농촌진흥청 메뉴젠](https://www.data.go.kr/data/15143471/openapi.do), [Supabase](https://supabase.com/)
